@@ -204,7 +204,7 @@ lock_acquire (struct lock *lock)
   int i=0;
 
   struct thread *cur = thread_current();
-  
+
   if (!thread_mlfqs){
 
     if (lock->holder){
@@ -266,13 +266,20 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-  remove_with_lock(lock);
-
+ if (!thread_mlfqs)
+ {
+    remove_with_lock(lock);
+ }
+  
   lock->holder = NULL;
+
   sema_up(&lock->semaphore);
 
+if (!thread_mlfqs)
+  {
   thread_set_donee(NULL);
   thread_set_priority(thread_get_priority());
+  }
 
 }
 
