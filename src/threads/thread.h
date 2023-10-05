@@ -163,21 +163,6 @@ void thread_set_donee(struct thread *new_donee);
 struct thread *thread_get_donee(void);
 
 void
-mlfqs_calculate_priority (struct thread *t);
-void
-mlfqs_calculate_recent_cpu (struct thread *t);
-void 
-mlfqs_calculate_load_avg (void);
-void
-mlfqs_increment_recent_cpu (void);
-void
-mlfqs_recalculate_recent_cpu (void);
-void
-mlfqs_recalculate_priority (void);
-void 
-thread_test_preemption (void);
-
-void
 mlfqs_priority(struct thread *t, void *aux);
 void
 mlfqs_priority_schedule(struct thread *t);

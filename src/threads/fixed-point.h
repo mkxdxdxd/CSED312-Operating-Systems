@@ -1,43 +1,26 @@
 #include <stdint.h>
-
-/* Shift factor. (# of fractional bits = 14) */
+/*for shift*/
 #define f (1 << 14)
-
-/* Converts integer N to fixed point number. */
+/*convert n to fixed point*/
 #define int_to_fixed(n) (n * f)
-
-/* Converts fixed point number X to integer
-   with round toward zero. */
+/*convert x to integer (rounding toward zero)*/
 #define fixed_to_int_round_to_zero(x) (x / f)
-
-/* Converts fixed point number X to integer
-   with round to nearest. */
+/*convert x to integer (rounding toward nearest)*/
 #define fixed_to_int(x) (x >= 0) ? ((x + f / 2) / f) \
                                  : ((x - f / 2) / f)
-
-/* Adds two fixed point numbers X and Y. */
+/*add x and y*/
 #define fixed_plus_fixed(x, y) (x + y)
-
-/* Adds fixed point X and integer N. */
-#define fixed_plus_int(x, n) (x + n * f)
-
-/* Subtracts fixed point number Y from
-   fixed point number X. */
+/*subtract y from x*/
 #define fixed_minus_fixed(x, y) (x - y)
-
-/* Subtracts integer N from fixed point
-   number X. */
+/*add x and n*/
+#define fixed_plus_int(x, n) (x + n * f)
+/*subtract n from x*/
 #define fixed_minus_int(x, n) (x - n * f)
-
-/* Multiplies two fixed point numbers X and Y. */
+/*multiply x by y*/
 #define fixed_mul_fixed(x, y) (int)((int64_t)x * y / f)
-
-/* Multiplies fixed point number X and integer N. */
+/*multiply x by n*/
 #define fixed_mul_int(x, n) (x * n)
-
-/* Divides fixed point number X by fixed point
-   number Y. */
+/*divide x by y*/
 #define fixed_div_fixed(x, y) (int)((int64_t)x * f / y)
-
-/* Divides fixed point number X by integer N. */
+/*divide x by n*/
 #define fixed_div_int(x, n) (x / n)
