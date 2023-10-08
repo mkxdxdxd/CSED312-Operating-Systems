@@ -29,7 +29,7 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
-//change
+/*Newly declared functions*/
 void thread_sleep(void);
 static list_less_func ordered_ticks_to_wake;
 static void thread_interrupt(struct thread *current);
@@ -43,11 +43,12 @@ timer_init (void)
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
 
+/*Blocks the current thread and put it in the sleep list*/
 void
 thread_sleep(void)
 {
   struct thread *current = thread_current();
-  list_insert_ordered(&sleep_list, &current->elem, ordered_ticks_to_wake, NULL); //for ordering the list when put in the list
+  list_insert_ordered(sleep_list_address(), &current->elem, ordered_ticks_to_wake, NULL); //for ordering the list when put in the list
   thread_block();
 }
 
@@ -192,9 +193,9 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-  while(!list_empty(&sleep_list))
+  while(!list_empty(sleep_list_address()))
   {
-    struct list_elem *le = list_front(&sleep_list);
+    struct list_elem *le = list_front(sleep_list_address());
     struct thread *current = list_entry(le, struct thread, elem);
     if(current->wake_ticks<=ticks){
       thread_interrupt(current);
@@ -203,9 +204,10 @@ timer_interrupt (struct intr_frame *args UNUSED)
   }
 }
 
+/*Remove the first thread in sleep_list and UNBLOCK the thread. */
 static void 
 thread_interrupt(struct thread *current){
-  list_pop_front(&sleep_list);
+  list_pop_front(sleep_list_address());
   thread_unblock(current);
 }
 
@@ -280,6 +282,7 @@ real_time_delay (int64_t num, int32_t denom)
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
 }
 
+/* Returns true if a's wake_ticks is bigger than that of b. */
 static bool
 ordered_ticks_to_wake(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {

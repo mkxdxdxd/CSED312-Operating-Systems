@@ -121,7 +121,7 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
-struct list sleep_list;
+
 
 void thread_init (void);
 void thread_start (void);
@@ -162,12 +162,10 @@ struct list *thread_get_donators(void);
 void thread_set_donee(struct thread *new_donee);
 struct thread *thread_get_donee(void);
 
-void
-mlfqs_priority(struct thread *t, void *aux);
-void
-mlfqs_priority_schedule(struct thread *t);
-void
-mlfqs_recent_cpu(struct thread *t, void *aux UNUSED);
+void mlfqs_priority(struct thread *t, void *aux);
+void mlfqs_priority_schedule(struct thread *t);
+void mlfqs_recent_cpu(struct thread *t, void *aux UNUSED);
 void mlfqs_load_avg(void);
 void mlfqs_increment (void);
+struct list *sleep_list_address(void);
 #endif /* threads/thread.h */

@@ -32,6 +32,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+static bool
+sema_priority_checking(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -42,8 +45,6 @@
    - up or "V": increment the value (and wake up one waiting
      thread, if any). */
 
-static bool
-sema_priority_checking(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void
 sema_init (struct semaphore *sema, unsigned value) 
 {
@@ -213,6 +214,7 @@ lock_acquire (struct lock *lock)
             {
                 struct thread *donee = lock->holder; //save lock address
                 
+                //max donation 8
                 for(i;i<8;i++)
                 {
                   if(donee != NULL)
@@ -388,9 +390,8 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 }
 
 
-/*check semaphore value with priority 
-compare value for semaphore element in list entry in list element 
-return 1 when first one is big or return 0*/
+/* Checks priority value of semaphore, comparing between semaphore a and b.
+  Returns 1 if a is bigger than that of b. */
 static bool
 sema_priority_checking(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {

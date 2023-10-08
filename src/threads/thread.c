@@ -29,12 +29,14 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
-
 /* Idle thread. */
 static struct thread *idle_thread;
 
 /* Initial thread, the thread running init.c:main(). */
 static struct thread *initial_thread;
+
+/*List of sleep list for blocked threads*/
+struct list sleep_list;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
@@ -170,6 +172,7 @@ thread_tick (void)
     intr_yield_on_return ();
 }
 
+/* Calculates recent_cpu. */
 void mlfqs_increment (void)
 {
 		thread_current ()->recent_cpu = fixed_plus_int(thread_current ()->recent_cpu, 1);
@@ -416,6 +419,7 @@ thread_set_priority (int new_priority)
     }
 }
 
+/* Returns maximum priority of to_compare */
 int compare_list_max(struct list to_compare)
 {
     struct list_elem *maximum = list_max(&to_compare, less_priority, NULL);
@@ -435,13 +439,13 @@ thread_get_priority (void)
     return list_entry(max_e, struct thread, doelem)->priority;
 }
 
-/* Returns the current thread's donators list. */
+/* Returns the current thread's donators */
 struct list *thread_get_donators(void)
 {
     return &thread_current()->donators;
 }
 
-/* Sets the current thread's donee to NEW_DONEE. */
+/* Sets the current thread's donee to new_donee. */
 void thread_set_donee(struct thread *new_donee)
 {
     thread_current()->donee = new_donee;
@@ -453,11 +457,10 @@ struct thread *thread_get_donee(void)
     return thread_current()->donee;
 }
 
-/* Sets the current thread's nice value to NICE. */
+/* Sets the current thread's nice value to NICE */
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
   enum intr_level old_level = intr_disable ();
   struct thread *cur = thread_current();
   cur->nice = nice;
@@ -470,7 +473,6 @@ thread_set_nice (int nice UNUSED)
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
   enum intr_level old_level = intr_disable ();
   int nice = thread_current ()-> nice;
   intr_set_level (old_level);
@@ -481,7 +483,6 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
   enum intr_level old_level = intr_disable ();
   int load_avg_value = fixed_to_int(fixed_mul_int (load_avg, 100));
   intr_set_level (old_level);
@@ -492,13 +493,13 @@ thread_get_load_avg (void)
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
   enum intr_level old_level = intr_disable ();
   int recent_cpu= fixed_to_int(fixed_mul_int (thread_current ()->recent_cpu, 100));
   intr_set_level (old_level);
   return recent_cpu;
 }
 
+/*Calculates priority and schedule*/
 void
 mlfqs_priority_schedule(struct thread *t)
 { 
@@ -513,6 +514,7 @@ mlfqs_priority_schedule(struct thread *t)
 }
 }
 
+/*Calculates priority.*/
 void 
 mlfqs_priority(struct thread*t, void *aux)
 {
@@ -761,6 +763,7 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
+/*returns true if thread a's priority is bigger than that of b*/
 bool less_priority(const struct list_elem *a, const struct list_elem *b, void *aux)
 {
     const struct thread *a_t = (aux == 1) ? list_entry(a, struct thread, doelem)
@@ -770,6 +773,7 @@ bool less_priority(const struct list_elem *a, const struct list_elem *b, void *a
     return a_t->priority < b_t->priority;
 }
 
+/*Removes do_elem from the list*/
 void
 remove_with_lock (struct lock *lock)
 {
@@ -783,14 +787,7 @@ remove_with_lock (struct lock *lock)
   }
 }
 
-void
-mlfqs_recent_cpu(struct thread *t, void *aux UNUSED)
-{
-    if (t == idle_thread)
-        return;
-    t->recent_cpu = fixed_plus_int(fixed_mul_fixed(fixed_div_fixed(fixed_mul_int(load_avg, 2), fixed_plus_int(fixed_mul_int(load_avg, 2), 1)), t->recent_cpu), t->nice);
-}
-
+/* Calculates load_avg. */
 void
 mlfqs_load_avg(void)
 {
@@ -799,4 +796,19 @@ mlfqs_load_avg(void)
         ready_threads++;
     int load_avg_term = fixed_mul_int(load_avg, 59);
     load_avg = fixed_div_int(fixed_plus_int(load_avg_term, ready_threads), 60);
+}
+
+/* Calculates recent_cpu. */
+void
+mlfqs_recent_cpu(struct thread *t, void *aux UNUSED)
+{
+    if (t == idle_thread)
+        return;
+    t->recent_cpu = fixed_plus_int(fixed_mul_fixed(fixed_div_fixed(fixed_mul_int(load_avg, 2), fixed_plus_int(fixed_mul_int(load_avg, 2), 1)), t->recent_cpu), t->nice);
+}
+
+/*Returns the adress of sleep_list. */
+struct list *sleep_list_address(void)
+{
+    return &sleep_list;
 }
