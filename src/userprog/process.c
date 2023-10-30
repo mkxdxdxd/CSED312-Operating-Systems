@@ -25,10 +25,11 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
+//2.2 Argument Passing
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  char *fn_copy, *fn_copy2, *thread_name, *ptr;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -38,42 +39,130 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  // to avoid race condition in checking the file name
+  fn_copy2 = palloc_get_page (0);
+  if (fn_copy2 == NULL)
+    return TID_ERROR;
+  strlcpy(fn_copy2, file_name , PGSIZE);
+
+  thread_name = strtok_r(fn_copy2, " ", &ptr);
+  if (filesys_open(thread_name) == NULL) {
+    return -1;
+  }
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (thread_name, PRI_DEFAULT, start_process, fn_copy);
+  palloc_free_page(fn_copy2); // temporary memory space for checking filename so free immediately
+  sema_down (&thread_current()->load_sema); // this continues when child finishes loading
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
+  
+  /*Checking child list if there's any thread loading. 
+    parent wait unitl child process finishes loading. */
+  struct list_elem *ele = NULL;
+  for (ele = list_begin(&thread_current()->child_thread); ele != list_end(&thread_current()->child_thread); ele = list_next(ele)) {
+      struct thread* t = list_entry(ele, struct thread, child_thread_elem);
+      if (t->load_failed == 1)
+        return process_wait(tid);
+  }
+
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
+//2.2 Argument Passing
 static void
 start_process (void *file_name_)
 {
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  int argc = 0;
+  char* argv[MAX_ARGS];
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+
+  parse(file_name, &argc, argv);
+  success = load (argv[0], &if_.eip, &if_.esp);
+  if (success){
+      save_the_argument_in_stack(argc, argv, &if_.esp);
+  }
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+  sema_up(&thread_current()->parent->load_sema); //parent waits until child finishes loading
 
+  if (!success){
+    thread_current()->load_failed = 1;
+    thread_exit ();
+  }
+ 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
+
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
+}
+
+//2.2 Argument Passing
+static void 
+parse(const char *line, int *argc, char **argv)
+{
+  //tokenize line and put it in argv stack
+  char *token, *ptr;
+  token = strtok_r(line, " ", &ptr);
+  while(token != NULL && *argc < MAX_ARGS){
+    argv[(*argc)++] = token;
+    token = strtok_r(NULL, " ", &ptr);
+  }
+
+}
+
+//2.2 Argument Passing
+static void 
+save_the_argument_in_stack (int argc, char** argv, void **esp){
+  uintptr_t addr[MAX_ARGS];
+  int i;
+  
+  //put argv into addr
+  for (i = argc - 1; i >= 0;i--){
+    *esp -= strlen(argv[i])+1;
+    strlcpy(*esp, argv[i], strlen(argv[i])+1);
+    addr[i] = (uintptr_t)*esp;
+  }
+
+  //allign
+  *esp = (uintptr_t)*esp & ~0x3;
+
+  size_t size = sizeof(uintptr_t);
+  *esp -= size;
+
+  //points to the saved address
+  for (i = argc - 1; i >= 0; i--)
+  {
+    *esp -= size;
+    *(uintptr_t *)*esp = addr[i];
+  }
+  *esp -= size;
+
+  //push argv
+  *(uintptr_t *)*esp = (uintptr_t)*esp + size;
+
+  //push argc
+  *esp -= sizeof(int);
+  *(int *)*esp = argc;
+
+  //decrease the pointer when arguments are saved
+  *esp -= size;
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -88,7 +177,18 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+  struct thread* child = get_child_thread(child_tid);
+  if (!child)
+  {
+    return -1;
+  } 
+
+  sema_down(&(child->wait_sema)); // parent process wait until child finishes execution
+  
+  int now_status = child->exit_status; // child exits, remove from the list 
+  list_remove(&(child->child_thread_elem));
+  sema_up(&(child->exit_sema)); // child removed from the list, safely exits.
+  return now_status; //returns child's exit status
 }
 
 /* Free the current process's resources. */
@@ -114,6 +214,11 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  if (cur->running_file) {
+    file_close(cur->running_file);
+  }
+
 }
 
 /* Sets up the CPU for running user code in the current
@@ -222,12 +327,18 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  struct lock* file_lock = get_file_lock();
+  lock_acquire(file_lock);
   file = filesys_open (file_name);
   if (file == NULL) 
     {
+      lock_release(file_lock);
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+  t->running_file = file;
+  file_deny_write(file);
+  lock_release(file_lock);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -463,3 +574,4 @@ install_page (void *upage, void *kpage, bool writable)
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
+

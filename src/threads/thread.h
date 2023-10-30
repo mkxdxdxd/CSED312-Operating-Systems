@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -110,6 +111,20 @@ struct thread
    int nice;
    int recent_cpu;
 
+   /* Parent-child relationship*/
+   struct thread* parent;
+   struct semaphore exit_sema;
+   struct semaphore wait_sema;
+   struct semaphore load_sema;
+   struct list child_thread;
+   struct list_elem child_thread_elem;
+   int load_failed;
+   int exit_status;
+
+   /* file descriptor */
+   struct file* fdt[131]; // 128 files, STDIN, STDOUT, STDERR
+   struct file* running_file;
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
@@ -156,8 +171,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-void
-remove_with_lock (struct lock *lock);
+void remove_with_lock (struct lock *lock);
 struct list *thread_get_donators(void);
 void thread_set_donee(struct thread *new_donee);
 struct thread *thread_get_donee(void);
@@ -168,4 +182,6 @@ void mlfqs_recent_cpu(struct thread *t, void *aux UNUSED);
 void mlfqs_load_avg(void);
 void mlfqs_increment (void);
 struct list *sleep_list_address(void);
+struct thread *get_child_thread(int tid);
+uint32_t *thread_get_pagedir(void);
 #endif /* threads/thread.h */
