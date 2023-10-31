@@ -655,16 +655,16 @@ init_thread (struct thread *t, const char *name, int priority)
   #ifdef USERPROG
   t->pcb = NULL;
   list_init(&t->children);
-  list_init(&t->fdt);
-  t->next_fd = 2;
+  //list_init(&t->fdt);
+  //t->next_fd = 2;
   #endif
 
-  // //file descriptor 
-  // int i;
-  // for (i = 0; i < 131; i++) {
-  //   t->fdt[i] = NULL;
-  // }
-  // t->running_file = NULL;
+   //file descriptor 
+   int i;
+   for (i = 0; i < 131; i++) {
+     t->fdt_list[i] = NULL;
+   }
+   t->running_file = NULL;
 
   t->magic = THREAD_MAGIC;
   t->wait_on_lock = NULL;
@@ -879,17 +879,17 @@ struct list *thread_get_children(void)
 }
 
 /* Returns the current thread's fdt. */
-struct list *thread_get_fdt(void)
-{
-    return &thread_current()->fdt;
-}
+//struct list *thread_get_fdt(void)
+//{
+    //return &thread_current()->fdt;
+//}
 
 /* Returns the current thread's next_fd and increments
    it by 1. */
-int thread_get_next_fd(void)
-{
-    return thread_current()->next_fd++;
-}
+//int thread_get_next_fd(void)
+//{
+    //return thread_current()->next_fd++;
+//}
 
 /* Sets the current thread's running_file to NEW_RUNNING_FILE. */
 void thread_set_running_file(struct file *new_running_file)

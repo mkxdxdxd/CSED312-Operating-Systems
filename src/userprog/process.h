@@ -33,12 +33,12 @@ struct process
  int exit_status; /* Exit status. */
 };
 
-struct file_descriptor_entry
+/*struct file_descriptor_entry
 {
     int fd;                   /* File descriptor. */
-    struct file *file;        /* File. */
-    struct list_elem fdtelem; /* List element for file descriptor table. */
-};
+    //struct file *file;        /* File. */
+    //struct list_elem fdtelem; /* List element for file descriptor table. */
+//};            
 
 
 #endif /* userprog/process.h */

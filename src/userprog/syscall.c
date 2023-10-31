@@ -16,25 +16,24 @@
 
 static struct lock filesys_lock;
 
-static void syscall_handler (struct intr_frame *);
+static void syscall_handler(struct intr_frame *);
 static void check_vaddr(const void *vaddr);
 
 static void syscall_halt(void);
-static pid_t syscall_exec (const char *file);
+static pid_t syscall_exec(const char *file);
 static int syscall_wait(pid_t pid);
-static bool syscall_create (const char *file, unsigned initial_size);
-static bool syscall_remove (const char *file);
-static int syscall_open (const char *file);
-static int syscall_filesize (int fd);
-static int syscall_read(int fd , void *buffer, unsigned size);
-static int syscall_write(int fd , void *buffer, unsigned size);
+static bool syscall_create(const char *file, unsigned initial_size);
+static bool syscall_remove(const char *file);
+static int syscall_open(const char *file);
+static int syscall_filesize(int fd);
+static int syscall_read(int fd, void *buffer, unsigned size);
+static int syscall_write(int fd, void *buffer, unsigned size);
 static int syscall_seek(int fd, unsigned position);
 static unsigned syscall_tell(int fd);
 
-
-
-struct lock* syscall_get_filesys_lock(void) {
-  return &filesys_lock;
+struct lock *syscall_get_filesys_lock(void)
+{
+    return &filesys_lock;
 }
 
 /* Registers the system call interrupt handler. */
@@ -45,9 +44,9 @@ void syscall_init(void)
 }
 
 static void
-syscall_handler (struct intr_frame *f UNUSED) 
+syscall_handler(struct intr_frame *f UNUSED)
 {
-  void *esp = f->esp;
+    void *esp = f->esp;
     int syscall_num;
 
     check_vaddr(esp);
@@ -210,7 +209,6 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
 }
 
-
 static void
 check_vaddr(const void *vaddr)
 {
@@ -219,56 +217,32 @@ check_vaddr(const void *vaddr)
         syscall_exit(-1);
 }
 
-static void syscall_halt(void){
-  shutdown_power_off();
+static void syscall_halt(void)
+{
+    shutdown_power_off();
 }
 
-void
-syscall_exit (int status){
-  struct process *pcb = thread_get_pcb();
-  pcb->exit_status = status;
-  printf("%s: exit(%d)\n", thread_name(), status);
-  //cur->exit_status = status;
+void syscall_exit(int status)
+{
+    struct process *pcb = thread_get_pcb();
+    pcb->exit_status = status;
+    printf("%s: exit(%d)\n", thread_name(), status);
 
-  //check later 
-  /*int i;
-  for (i = 2; i < 131; i++) {
-    if (cur->fdt[i] != NULL) {
-        close(i);
+    int i;
+    for (i = 2; i < 131; i++) {
+    if (thread_current()->fdt_list[i] != NULL) {
+      syscall_close(i);
     }
-  }*/
+    }
 
-  //thread_exit() waits for child process to exit
-  /*struct thread* temp_thread = NULL;
-  struct list_elem* temp_elem = NULL;
-  for (temp_elem = list_begin(&thread_current()->child_thread); temp_elem != list_end(&thread_current()->child_thread); temp_elem = list_next(temp_elem)) {
-      temp_thread = list_entry(temp_elem, struct thread, child_thread_elem);
-      process_wait(temp_thread->tid);
-  }*/
-  thread_exit();
-
+    thread_exit();
 }
 
 static pid_t
-syscall_exec (const char *cmd_line){
+syscall_exec(const char *cmd_line)
+{
 
-  // tid_t tid = (process_execute(file));
- 
-  // if (tid == TID_ERROR) {
-  //   return TID_ERROR;
-  // } if (!tid) {
-  //   return TID_ERROR;
-  // }
-   
-  // struct thread* child = get_child_thread(tid);
-  // if (!child) {;
-  //     return TID_ERROR;
-  // } if (child->load_failed==1) {
-  //     return TID_ERROR;
-  // }
-  // return tid;
-
-   pid_t pid;
+    pid_t pid;
     struct process *child;
     int i;
 
@@ -283,34 +257,34 @@ syscall_exec (const char *cmd_line){
         return PID_ERROR;
 
     return pid;
-
 }
 
-static int 
+static int
 syscall_wait(pid_t pid)
 {
     return process_wait(pid);
 }
 
 static bool
-syscall_create (const char *file, unsigned initial_size){
+syscall_create(const char *file, unsigned initial_size)
+{
 
-  // bool success;
-  // int i;
+    // bool success;
+    // int i;
 
-  // check_vaddr(file);
+    // check_vaddr(file);
 
-  // //check later
-  // for (i = 0; *(file + i); i++)
-  //     check_vaddr(file + i + 1);
-  //     //check
+    // //check later
+    // for (i = 0; *(file + i); i++)
+    //     check_vaddr(file + i + 1);
+    //     //check
 
-  // lock_acquire(&file_lock);
-  // success = filesys_create(file, (off_t)initial_size);
-  // lock_release(&file_lock);
+    // lock_acquire(&file_lock);
+    // success = filesys_create(file, (off_t)initial_size);
+    // lock_release(&file_lock);
 
-  // return success;
-  bool success;
+    // return success;
+    bool success;
     int i;
 
     check_vaddr(file);
@@ -325,22 +299,23 @@ syscall_create (const char *file, unsigned initial_size){
 }
 
 static bool
-syscall_remove (const char *file){
+syscall_remove(const char *file)
+{
 
-  // bool success;
-  // int i;
+    // bool success;
+    // int i;
 
-  // check_vaddr(file);
-  // //check later
-  // for (i = 0; *(file + i); i++)
-  //     check_vaddr(file + i + 1);
+    // check_vaddr(file);
+    // //check later
+    // for (i = 0; *(file + i); i++)
+    //     check_vaddr(file + i + 1);
 
-  // lock_acquire(&file_lock);
-  // success = filesys_remove(file);
-  // lock_release(&file_lock);
+    // lock_acquire(&file_lock);
+    // success = filesys_remove(file);
+    // lock_release(&file_lock);
 
-  // return success;
-   bool success;
+    // return success;
+    bool success;
     int i;
 
     check_vaddr(file);
@@ -352,120 +327,65 @@ syscall_remove (const char *file){
     lock_release(&filesys_lock);
 
     return success;
-
 }
 
-//file related
+// file related
 static int
-syscall_open (const char *file){
+syscall_open(const char *file)
+{
 
-  // if (file == NULL) syscall_exit(-1);
-  // check_vaddr(file);
-  // lock_acquire(&file_lock);
- 
-  // int i, ret = -1;
-  // struct file* opening_file = filesys_open(file);
-  // if (opening_file == NULL) {
-  //   ret = -1;
-  // } 
-  // else {
-  //   for (i = 2; i < 131; i++) {
-  //     if (thread_current()->fdt[i] == NULL) {
-  //       if (strcmp(thread_name(), file) == 0)
-  //         file_deny_write(opening_file);
-  //       thread_current()->fdt[i] = opening_file;
-  //       ret = i;
-  //       break;
-  //     }
-  //   }
-  // }
- 
-  // lock_release(&file_lock);
-  // return ret;
-struct file_descriptor_entry *fde;
     struct file *new_file;
-    int i;
+    int i, j, return_num;
 
     check_vaddr(file);
     for (i = 0; *(file + i); i++)
         check_vaddr(file + i + 1);
-
-    fde = palloc_get_page(0);
-    if (!fde)
-        return -1;
 
     lock_acquire(&filesys_lock);
 
     new_file = filesys_open(file);
     if (!new_file)
     {
-        palloc_free_page(fde);
         lock_release(&filesys_lock);
 
         return -1;
     }
 
-    fde->fd = thread_get_next_fd();
-    fde->file = new_file;
-    list_push_back(thread_get_fdt(), &fde->fdtelem);
+    for (j = 2; j < 131; j++)
+    {
+        if (thread_current()->fdt_list[j] == NULL)
+        {
+            thread_current()->fdt_list[j] = new_file;
+            return_num = j;
+            break;
+        }
+    }
 
     lock_release(&filesys_lock);
-
-    return fde->fd;
-
+    return return_num;
 }
 static int
-syscall_filesize (int fd){
+syscall_filesize(int fd)
+{
 
-  // if (thread_current()->fdt[fd] == NULL)
-  //   syscall_exit(-1);
-
-  // lock_acquire(&file_lock);
-  // int size = file_length(thread_current()->fdt[fd]);
-  // lock_release(&file_lock);
-  // return size;
-  struct file_descriptor_entry *fde = process_get_fde(fd);
     int filesize;
 
-    if (!fde)
-        return -1;
+    if (thread_current()->fdt_list[fd] == NULL)
+    {
+        //return -1;
+        syscall_exit(-1);
+    }
 
     lock_acquire(&filesys_lock);
-    filesize = file_length(fde->file);
+    filesize = file_length(thread_current()->fdt_list[fd]);
     lock_release(&filesys_lock);
 
     return filesize;
-
-
 }
 static int
-syscall_read(int fd , void *buffer, unsigned size){
-  // int ret = -1;
-  // int i = 0;
-  // for (i = 0; i < size; i++)
-  //   check_vaddr(&buffer[i]);
+syscall_read(int fd, void *buffer, unsigned size)
+{
 
-
-  // lock_acquire(&file_lock);
-  // if (fd == 0) {
-  //   for (i = 0; i < size; i++) {
-  //     ((char *)buffer)[i] = input_getc();
-  //     if (((char *)buffer)[i] == '\0')
-  //       break;
-  //   }
-  //   ret = i;
-  // } else {
-  //   if (thread_current()->fdt[fd] == NULL) {
-  //     lock_release(&file_lock);
-  //     syscall_exit(-1);
-  //   }
-  //   ret = (int)file_read(thread_current()->fdt[fd], buffer, (off_t)size);
-  // }
-  // lock_release(&file_lock);
-
-
-  // return ret;
-  struct file_descriptor_entry *fde;
     int bytes_read, i;
 
     for (i = 0; i < size; i++)
@@ -481,44 +401,22 @@ syscall_read(int fd , void *buffer, unsigned size){
         return size;
     }
 
-    fde = process_get_fde(fd);
-    if (!fde)
-        return -1;
+    if (fd < 2 || fd>130 ||thread_current()->fdt_list[fd] == NULL)
+    {
+        //return -1;
+        syscall_exit(-1);
+    }
 
     lock_acquire(&filesys_lock);
-    bytes_read = (int)file_read(fde->file, buffer, (off_t)size);
+    bytes_read = (int)file_read(thread_current()->fdt_list[fd], buffer, (off_t)size);
     lock_release(&filesys_lock);
 
     return bytes_read;
-
 }
-static int 
-syscall_write(int fd , void *buffer, unsigned size){
-  // int i = 0;
-  // for (i = 0; i < size; i++)
-  //       check_vaddr(&buffer[i]);
-  // int ret = -1;
- 
-  // lock_acquire(&file_lock);
-  // if (fd == 1) {
-  //   putbuf(buffer, size);
-  //   ret = size;
-  // }
-  // else {
-  //   if (thread_current()->fdt[fd] == NULL) {
-  //     lock_release(&file_lock);
-  //     syscall_exit(-1);
-  //   }
-  //   //if (file_get_deny_write(thread_current()->fdt[fd]))
-  //     file_deny_write(thread_current()->fdt[fd]);
-  //   ret = (int)file_write(thread_current()->fdt[fd], buffer, (off_t)size);
-  // }
+static int
+syscall_write(int fd, void *buffer, unsigned size)
+{
 
-
-  // lock_release(&file_lock);
-  // return ret;
-
-  struct file_descriptor_entry *fde;
     int bytes_written, i;
 
     for (i = 0; i < size; i++)
@@ -531,78 +429,61 @@ syscall_write(int fd , void *buffer, unsigned size){
         return size;
     }
 
-    fde = process_get_fde(fd);
-    if (!fde)
-        return -1;
+    if (fd < 2 || fd>130 ||thread_current()->fdt_list[fd] == NULL)
+    {
+        //return -1;
+        syscall_exit(-1);
+    }
 
     lock_acquire(&filesys_lock);
-    bytes_written = (int)file_write(fde->file, buffer, (off_t)size);
+    bytes_written = (int)file_write(thread_current()->fdt_list[fd], buffer, (off_t)size);
     lock_release(&filesys_lock);
 
     return bytes_written;
-
-
 }
-static int 
-syscall_seek(int fd, unsigned position){
+static int
+syscall_seek(int fd, unsigned position)
+{
 
-  // if (thread_current()->fdt[fd] == NULL)
-  //     syscall_exit(-1);
-  // lock_acquire(&file_lock);
-  // file_seek(thread_current()->fdt[fd], position);
-  // lock_release(&file_lock);
-
-  struct file_descriptor_entry *fde = process_get_fde(fd);
-
-    if (!fde)
-        return;
+    if (thread_current()->fdt_list[fd] == NULL)
+    {
+        //return -1;
+        syscall_exit(-1);
+    }
 
     lock_acquire(&filesys_lock);
-    file_seek(fde->file, (off_t)position);
+    file_seek(thread_current()->fdt_list[fd], (off_t)position);
     lock_release(&filesys_lock);
 }
 
-static unsigned 
-syscall_tell(int fd){
-  // if (thread_current()->fdt[fd] == NULL)
-  //     syscall_exit(-1);
+static unsigned
+syscall_tell(int fd)
+{
 
-  // lock_acquire(&file_lock);
-  // unsigned pos = (unsigned)file_tell(thread_current()->fdt[ fd ]);
-  // lock_release(&file_lock);
-  // return pos;
-  struct file_descriptor_entry *fde = process_get_fde(fd);
     unsigned pos;
 
-    if (!fde)
-        return -1;
+    if (thread_current()->fdt_list[fd] == NULL)
+    {
+        //return -1;
+        syscall_exit(-1);
+    }
 
     lock_acquire(&filesys_lock);
-    pos = (unsigned)file_tell(fde->file);
+    pos = (unsigned)file_tell(thread_current()->fdt_list[fd]);
     lock_release(&filesys_lock);
 
     return pos;
-
 }
-void 
-syscall_close(int fd){
-
-  // if (thread_current()->fdt[fd] == NULL)
-  //     syscall_exit(-1);
-  // lock_acquire(&file_lock);
-  // file_close(thread_current()->fdt[fd]);
-  // thread_current()->fdt[fd] = NULL;
-  // lock_release(&file_lock);
-  struct file_descriptor_entry *fde = process_get_fde(fd);
-
-    if (!fde)
-        return;
+void syscall_close(int fd)
+{
+    if (fd < 2 || fd>130 || thread_current()->fdt_list[fd] == NULL)
+    {
+        //return -1;
+        syscall_exit(-1);
+    }
 
     lock_acquire(&filesys_lock);
-    file_close(fde->file);
-    list_remove(&fde->fdtelem);
-    palloc_free_page(fde);
+    file_close(thread_current()->fdt_list[fd]);
+    thread_current()->fdt_list[fd] = NULL;
     lock_release(&filesys_lock);
-
 }
-

@@ -94,15 +94,16 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;            /* List element. */
 
-#ifdef USERPROG
+
     /* Owned by userprog/process.c. */
    uint32_t *pagedir;                  /* Page directory. */
    struct process *pcb;       /* Process control block. */
    struct list children;      /* List of children processes. */
-   struct list fdt;           /* List of file descriptor entries. */
-   int next_fd;               /* File descriptor for next file. */
+   //struct list fdt;           /* List of file descriptor entries. */
+   //int next_fd;               /* File descriptor for next file. */
    struct file *running_file; /* Currently running file. */
-#endif
+   struct file* fdt_list[131];
+
 
     /* Owned by devices/timer.c. */
     int64_t wake_ticks; /* Ticks to wake up. */
@@ -116,19 +117,6 @@ struct thread
    int nice;
    int recent_cpu;
 
-   // /* Parent-child relationship*/
-   // struct thread* parent;
-   // struct semaphore exit_sema;
-   // struct semaphore wait_sema;
-   // struct semaphore load_sema;
-   // struct list child_thread;
-   // struct list_elem child_thread_elem;
-   // int load_failed;
-   // int exit_status;
-
-   // /* file descriptor */
-   // struct file* fdt[131]; // 128 files, STDIN, STDOUT, STDERR
-   // struct file* running_file;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
