@@ -345,26 +345,26 @@ thread_exit (void)
   process_exit ();
 #endif
 
-  // parent-child relationship
-  /* When a thread exits, exiting thread's child must exit first. 
-    So child's semaphore should be increased to finish its execution. */
-  struct list_elem *child = list_begin(&thread_current()->child_thread);
+  // // parent-child relationship
+  // /* When a thread exits, exiting thread's child must exit first. 
+  //   So child's semaphore should be increased to finish its execution. */
+  // struct list_elem *child = list_begin(&thread_current()->child_thread);
 
-  while (child != list_end(&thread_current()->child_thread)) {
-      struct thread *t = list_entry(child, struct thread, child_thread_elem);
-      child = list_remove(child);
-      sema_up(&t->exit_sema);
-  }
+  // while (child != list_end(&thread_current()->child_thread)) {
+  //     struct thread *t = list_entry(child, struct thread, child_thread_elem);
+  //     child = list_remove(child);
+  //     sema_up(&t->exit_sema);
+  // }
 
-  sema_up (&thread_current()->wait_sema); //parent process is waiting for child's exit so now parent can continue execution
-  sema_down (&thread_current()->exit_sema); //wait until parent process removes an exiting thread from parent's children list
+  // sema_up (&thread_current()->wait_sema); //parent process is waiting for child's exit so now parent can continue execution
+  // sema_down (&thread_current()->exit_sema); //wait until parent process removes an exiting thread from parent's children list
 
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current()->child_thread_elem);
+  //list_remove (&thread_current()->child_thread_elem);
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
@@ -652,21 +652,19 @@ init_thread (struct thread *t, const char *name, int priority)
         mlfqs_priority(t,NULL);
     }
 
-  //parent-child relationship
-  t->parent = running_thread();
-  sema_init(&t->load_sema, 0);
-  sema_init(&t->exit_sema, 0);
-  sema_init(&t->wait_sema, 0);
-  list_init(&(t->child_thread));
-  list_push_back(&(running_thread()->child_thread), &(t->child_thread_elem));
-  t->load_failed = 0;
+  #ifdef USERPROG
+  t->pcb = NULL;
+  list_init(&t->children);
+  list_init(&t->fdt);
+  t->next_fd = 2;
+  #endif
 
-  //file descriptor 
-  int i;
-  for (i = 0; i < 131; i++) {
-    t->fdt[i] = NULL;
-  }
-  t->running_file = NULL;
+  // //file descriptor 
+  // int i;
+  // for (i = 0; i < 131; i++) {
+  //   t->fdt[i] = NULL;
+  // }
+  // t->running_file = NULL;
 
   t->magic = THREAD_MAGIC;
   t->wait_on_lock = NULL;
@@ -846,19 +844,63 @@ struct list *sleep_list_address(void)
     return &sleep_list;
 }
 
+
+
+#ifdef USERPROG
+
+/* Sets the current thread's pagedir to NEW_PAGEDIR. */
+void thread_set_pagedir(uint32_t *new_pagedir)
+{
+    thread_current()->pagedir = new_pagedir;
+}
+
+/* Returns the current thread's pagedir. */
 uint32_t *thread_get_pagedir(void)
 {
-  return thread_current()->pagedir;
+    return thread_current()->pagedir;
 }
 
-struct thread *get_child_thread(int tid){
- struct list_elem * e;
-
-  //search for child process with tid using child list
-  for (e = list_begin(&thread_current()->child_thread); e != list_end(&thread_current()->child_thread); e = list_next(e)) {
-    struct thread *t = list_entry (e, struct thread, child_thread_elem);
-    if (t->tid == tid) return t;
-  }
-  return NULL;
-
+/* Sets the current thread's pcb to NEW_PCB. */
+void thread_set_pcb(struct process *new_pcb)
+{
+    thread_current()->pcb = new_pcb;
 }
+
+/* Returns the current thread's pcb. */
+struct process *thread_get_pcb(void)
+{
+    return thread_current()->pcb;
+}
+
+/* Returns the current thread's children. */
+struct list *thread_get_children(void)
+{
+    return &thread_current()->children;
+}
+
+/* Returns the current thread's fdt. */
+struct list *thread_get_fdt(void)
+{
+    return &thread_current()->fdt;
+}
+
+/* Returns the current thread's next_fd and increments
+   it by 1. */
+int thread_get_next_fd(void)
+{
+    return thread_current()->next_fd++;
+}
+
+/* Sets the current thread's running_file to NEW_RUNNING_FILE. */
+void thread_set_running_file(struct file *new_running_file)
+{
+    thread_current()->running_file = new_running_file;
+}
+
+/* Returns the current thread's running_file. */
+struct file *thread_get_running_file(void)
+{
+    return thread_current()->running_file;
+}
+
+#endif

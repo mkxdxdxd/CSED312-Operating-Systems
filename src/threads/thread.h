@@ -96,7 +96,12 @@ struct thread
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+   uint32_t *pagedir;                  /* Page directory. */
+   struct process *pcb;       /* Process control block. */
+   struct list children;      /* List of children processes. */
+   struct list fdt;           /* List of file descriptor entries. */
+   int next_fd;               /* File descriptor for next file. */
+   struct file *running_file; /* Currently running file. */
 #endif
 
     /* Owned by devices/timer.c. */
@@ -111,19 +116,19 @@ struct thread
    int nice;
    int recent_cpu;
 
-   /* Parent-child relationship*/
-   struct thread* parent;
-   struct semaphore exit_sema;
-   struct semaphore wait_sema;
-   struct semaphore load_sema;
-   struct list child_thread;
-   struct list_elem child_thread_elem;
-   int load_failed;
-   int exit_status;
+   // /* Parent-child relationship*/
+   // struct thread* parent;
+   // struct semaphore exit_sema;
+   // struct semaphore wait_sema;
+   // struct semaphore load_sema;
+   // struct list child_thread;
+   // struct list_elem child_thread_elem;
+   // int load_failed;
+   // int exit_status;
 
-   /* file descriptor */
-   struct file* fdt[131]; // 128 files, STDIN, STDOUT, STDERR
-   struct file* running_file;
+   // /* file descriptor */
+   // struct file* fdt[131]; // 128 files, STDIN, STDOUT, STDERR
+   // struct file* running_file;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
@@ -184,4 +189,21 @@ void mlfqs_increment (void);
 struct list *sleep_list_address(void);
 struct thread *get_child_thread(int tid);
 uint32_t *thread_get_pagedir(void);
+
+
+#ifdef USERPROG
+uint32_t *thread_get_pagedir(void);
+void thread_set_pagedir(uint32_t *);
+struct process *thread_get_pcb(void);
+void thread_set_pcb(struct process *);
+struct list *thread_get_children(void);
+struct list *thread_get_fdt(void);
+int thread_get_next_fd(void);
+struct file *thread_get_running_file(void);
+void thread_set_running_file(struct file *);
+#endif
+
+list_less_func less_priority;
+
+
 #endif /* threads/thread.h */
