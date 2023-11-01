@@ -20,25 +20,15 @@ struct file_descriptor_entry *process_get_fde(int);
 
 struct process
 {
- const char *file_name;
- 
- /* Shared between process.c and usyscall.c. */
- pid_t pid; /* Process identifier. */
- struct thread *parent; /* Parent process. */
- struct list_elem childelem; /* List elemnt for children list. */
- bool is_loaded; /* Whether program is loaded. */
- struct semaphore load_sema; /* Semaphore for waiting until load. */
- bool is_exited; /* Whether process is exited or not. */
- struct semaphore exit_sema; /* Semaphore for waiting until exit. */
- int exit_status; /* Exit status. */
-};
-
-/*struct file_descriptor_entry
-{
-    int fd;                   /* File descriptor. */
-    //struct file *file;        /* File. */
-    //struct list_elem fdtelem; /* List element for file descriptor table. */
-//};            
-
+ const char *file_name; //process filename
+ pid_t pid; //process id 
+ struct thread *parent; //store parent thread
+ struct list_elem childelem; // store list of child
+ bool is_loaded; // the process is loaded in memory
+ struct semaphore load_sema; // semaphore for loading a process into a memory
+ struct semaphore exit_sema; // semaphore for process_wait(), waiting for child process to exit
+ bool is_exited;  // the process has been exited
+ int exit_status; // exit status
+};        
 
 #endif /* userprog/process.h */

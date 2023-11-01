@@ -230,9 +230,9 @@ void syscall_exit(int status)
 
     int i;
     for (i = 2; i < 131; i++) {
-    if (thread_current()->fdt_list[i] != NULL) {
-      syscall_close(i);
-    }
+        if (thread_current()->fdt_list[i] != NULL) {
+        syscall_close(i);
+        }
     }
 
     thread_exit();
@@ -241,7 +241,9 @@ void syscall_exit(int status)
 static pid_t
 syscall_exec(const char *cmd_line)
 {
-
+    /* During syscall_exec, parent process does not need to wait for a child to exit. 
+        Instead, it waits only til a child process loads to the memory.
+        Two threads are independent. */
     pid_t pid;
     struct process *child;
     int i;
@@ -268,22 +270,6 @@ syscall_wait(pid_t pid)
 static bool
 syscall_create(const char *file, unsigned initial_size)
 {
-
-    // bool success;
-    // int i;
-
-    // check_vaddr(file);
-
-    // //check later
-    // for (i = 0; *(file + i); i++)
-    //     check_vaddr(file + i + 1);
-    //     //check
-
-    // lock_acquire(&file_lock);
-    // success = filesys_create(file, (off_t)initial_size);
-    // lock_release(&file_lock);
-
-    // return success;
     bool success;
     int i;
 
@@ -301,20 +287,6 @@ syscall_create(const char *file, unsigned initial_size)
 static bool
 syscall_remove(const char *file)
 {
-
-    // bool success;
-    // int i;
-
-    // check_vaddr(file);
-    // //check later
-    // for (i = 0; *(file + i); i++)
-    //     check_vaddr(file + i + 1);
-
-    // lock_acquire(&file_lock);
-    // success = filesys_remove(file);
-    // lock_release(&file_lock);
-
-    // return success;
     bool success;
     int i;
 
@@ -329,7 +301,7 @@ syscall_remove(const char *file)
     return success;
 }
 
-// file related
+// file related sycall
 static int
 syscall_open(const char *file)
 {

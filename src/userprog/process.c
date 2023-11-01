@@ -29,7 +29,8 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 //2.2 Argument Passing
 tid_t
 process_execute (const char *file_name) 
-{
+{ /* process_execute is called by kernel thread in init.c 
+    and syscall_execute in syscall.c */
   char *fn_copy, *fn_copy2, *thread_name, *ptr;
   tid_t tid;
   struct process *pcb;
@@ -41,45 +42,44 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  // to avoid race condition in checking the file name
+  // while checking the file name, race condition can occur. So make fn_copy2.
   fn_copy2 = palloc_get_page (0);
   if (fn_copy2 == NULL)
     return TID_ERROR;
   strlcpy(fn_copy2, file_name , PGSIZE);
 
-/* Create a process control block for the new process. */
-    pcb = palloc_get_page(0);
-    if (!pcb)
-        return TID_ERROR;
-    pcb->file_name = fn_copy;
-    pcb->parent = thread_current();
-    pcb->is_loaded = false;
-    sema_init(&pcb->load_sema, 0);
-    pcb->is_exited = false;
-    sema_init(&pcb->exit_sema, 0);
-    pcb->exit_status = -1;
-
+  //allocate process control block
+  pcb = palloc_get_page(0);
+  if (!pcb)
+      return TID_ERROR;
+  pcb->file_name = fn_copy;
+  pcb->parent = thread_current();
+  pcb->is_loaded = false;
+  sema_init(&pcb->load_sema, 0);
+  pcb->is_exited = false;
+  sema_init(&pcb->exit_sema, 0);
+  pcb->exit_status = -1;
 
   thread_name = strtok_r(fn_copy2, " ", &ptr);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (thread_name, PRI_DEFAULT, start_process, pcb);
   if (tid == TID_ERROR)
-      {
-          palloc_free_page(fn_copy);
-          palloc_free_page(pcb);
-          goto done;
-      }
+  {
+      palloc_free_page(fn_copy);
+      palloc_free_page(pcb);
+      goto done;
+  }
 
-      /* Wait until child process's program is loaded. If it
-      successfully load its program, push it into children list. */
-      sema_down(&pcb->load_sema);
-      if (pcb->pid != PID_ERROR)
-          list_push_back(thread_get_children(), &pcb->childelem);
+  /* Wait until child process successfully loads.
+    Otherwise, child process cannot be inserted into the child list. */
+  sema_down(&pcb->load_sema);
+  if (pcb->pid != PID_ERROR) // When child process has been successfully loaded, push child into the list.
+      list_push_back(thread_get_children(), &pcb->childelem);
 
 done:
-      palloc_free_page(fn_copy2);
-      return tid;
+    palloc_free_page(fn_copy2);
+    return tid;
 
 
 }
@@ -89,7 +89,7 @@ done:
 //2.2 Argument Passing
 static void
 start_process (void *pcb_k)
-{
+{ // called by process_executed.
   struct process *pcb = pcb_k;
   char *file_name = pcb->file_name;
   struct intr_frame if_;
@@ -107,7 +107,9 @@ start_process (void *pcb_k)
 
   parse(file_name, &argc, argv);
   success = pcb->is_loaded = load (argv[0], &if_.eip, &if_.esp);
-  pcb->pid = success ? thread_tid() : PID_ERROR;
+  if (success) pcb->pid = thread_tid();
+  else pcb->pid = PID_ERROR;
+
   sema_up(&pcb->load_sema);
   if (success){
       save_the_argument_in_stack(argc, argv, &if_.esp);
@@ -117,7 +119,6 @@ start_process (void *pcb_k)
   palloc_free_page (file_name);
 
   if (!success){
-    //thread_current()->load_failed = 1;
     syscall_exit(-1);
   }
  
@@ -195,7 +196,7 @@ save_the_argument_in_stack (int argc, char** argv, void **esp){
    does nothing. */
 int
 process_wait (tid_t child_tid) 
-{
+{ //called by kernel thread in init.c
   struct process* child = process_get_child(child_tid);
   if (!child)
   {
@@ -203,34 +204,35 @@ process_wait (tid_t child_tid)
   } 
 
   sema_down(&child->exit_sema); // parent process wait until child finishes execution
-  int exit_status = child->exit_status; // child exits, remove from the list 
+  int exit_status = child->exit_status; // child has exited, remove from the list 
   process_remove_child(child);
-  return exit_status; //returns child's exit status
+  return exit_status; //returns child's exit status, parent process can continue execution.
 }
 
 /* Free the current process's resources. */
 void
 process_exit (void)
-{
+{ 
+  //called by syscall_exit() in syscall.c
   struct thread *cur = thread_current ();
   struct process *pcb = thread_get_pcb();
   struct list *children = thread_get_children();
   struct list_elem *e;
   struct lock *filesys_lock = syscall_get_filesys_lock();
   uint32_t *pd;
-  //int max_fd = thread_get_next_fd(), i;
 
   pcb->is_exited = true;
+  // remove child process from child list, free child pcb.
   for (e = list_begin(children); e != list_end(children); e = list_next(e))
       process_remove_child(list_entry(e, struct process, childelem));
-  //for (i = 2; i < max_fd; i++)
-      //syscall_close(i);
 
-  sema_up(&pcb->exit_sema);
+  /* child has been removed from the list, successfully exited.
+    parent, waiting in process_wait(), can continue its execution. */
+  sema_up(&pcb->exit_sema); 
   if (pcb && !pcb->parent)
-      palloc_free_page(pcb);
+      palloc_free_page(pcb); //free parent's pcb
 
-    /* Close the running file. */
+    /* Running file(Process file) is stored in struct thread. Close the file that a process has opened */
   lock_acquire(filesys_lock);
   file_close(thread_get_running_file());
   lock_release(filesys_lock);
@@ -361,15 +363,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-
-  lock_acquire(file_lock);
+  lock_acquire(file_lock); 
   file = filesys_open (file_name);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-  
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -449,17 +449,17 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
+  
+  //running file is set to the file which was just opened. 
   thread_set_running_file(file);
-  file_deny_write(file);
+  file_deny_write(file); // running file should be blocked from writing. 
 
   success = true;
 
  done:
   /* We arrive here whether the load is successful or not. */
-  //file_close (file);
   lock_release(file_lock);
   return success;
-
 }
 
 /* load() helpers. */
@@ -610,10 +610,7 @@ install_page (void *upage, void *kpage, bool writable)
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
 
-
-
-
-/* Returns the current process's child process with pid PID. */
+/* Find the current process's child and return its PID. */
 struct process *process_get_child(pid_t pid)
 {
     struct list *children = thread_get_children();
@@ -630,8 +627,7 @@ struct process *process_get_child(pid_t pid)
     return NULL;
 }
 
-/* Removes CHILD from the current process's children list and
-   reset its parent. If it is terminated, free its page. */
+/* Remove child's PCB from the child list and free PCB when child is exited.*/
 void process_remove_child(struct process *child)
 {
     if (!child)
@@ -643,20 +639,3 @@ void process_remove_child(struct process *child)
     if (child->is_exited)
         palloc_free_page(child);
 }
-
-/* Returns the current process's file descriptor entry with fd FD. */
-/*struct file_descriptor_entry *process_get_fde(int fd)
-{
-    struct list *fdt = thread_get_fdt();
-    struct list_elem *e;
-
-    for (e = list_begin(fdt); e != list_end(fdt); e = list_next(e))
-    {
-        struct file_descriptor_entry *fde = list_entry(e, struct file_descriptor_entry, fdtelem);
-
-        if (fde->fd == fd)
-            return fde;
-    }
-
-    return NULL;
-}*/

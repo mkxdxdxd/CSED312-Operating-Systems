@@ -99,14 +99,12 @@ struct thread
    uint32_t *pagedir;                  /* Page directory. */
    struct process *pcb;       /* Process control block. */
    struct list children;      /* List of children processes. */
-   //struct list fdt;           /* List of file descriptor entries. */
-   //int next_fd;               /* File descriptor for next file. */
    struct file *running_file; /* Currently running file. */
    struct file* fdt_list[131];
 
 
     /* Owned by devices/timer.c. */
-    int64_t wake_ticks; /* Ticks to wake up. */
+   int64_t wake_ticks; /* Ticks to wake up. */
 
    int original_priority;
    struct list donators;
