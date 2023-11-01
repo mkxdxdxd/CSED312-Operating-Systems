@@ -177,18 +177,6 @@ struct thread *get_child_thread(int tid);
 uint32_t *thread_get_pagedir(void);
 
 
-#ifdef USERPROG
-uint32_t *thread_get_pagedir(void);
-void thread_set_pagedir(uint32_t *);
-struct process *thread_get_pcb(void);
-void thread_set_pcb(struct process *);
-struct list *thread_get_children(void);
-struct list *thread_get_fdt(void);
-int thread_get_next_fd(void);
-struct file *thread_get_running_file(void);
-void thread_set_running_file(struct file *);
-#endif
-
 list_less_func less_priority;
 
 

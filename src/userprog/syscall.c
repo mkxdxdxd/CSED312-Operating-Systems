@@ -213,7 +213,7 @@ static void
 check_vaddr(const void *vaddr)
 {
     if (!vaddr || !is_user_vaddr(vaddr) ||
-        !pagedir_get_page(thread_get_pagedir(), vaddr))
+        !pagedir_get_page(thread_current()->pagedir, vaddr))
         syscall_exit(-1);
 }
 
@@ -224,18 +224,18 @@ static void syscall_halt(void)
 
 void syscall_exit(int status)
 {
-    struct process *pcb = thread_get_pcb();
+    struct process *pcb = thread_current()->pcb;
     pcb->exit_status = status;
     printf("%s: exit(%d)\n", thread_name(), status);
 
     int i;
     for (i = 2; i < 131; i++) {
         if (thread_current()->fdt_list[i] != NULL) {
-        syscall_close(i);
+            syscall_close(i);
         }
     }
 
-    thread_exit();
+    thread_exit(); //Inside thread_exit(), process_exit() is called.
 }
 
 static pid_t
@@ -245,7 +245,7 @@ syscall_exec(const char *cmd_line)
         Instead, it waits only til a child process loads to the memory.
         Two threads are independent. */
     pid_t pid;
-    struct process *child;
+    struct process *child = NULL;
     int i;
 
     check_vaddr(cmd_line);
@@ -253,7 +253,24 @@ syscall_exec(const char *cmd_line)
         check_vaddr(cmd_line + i + 1);
 
     pid = process_execute(cmd_line);
-    child = process_get_child(pid);
+    
+    /* find child with 'pid' in child list and check if its pcb has been successfuly loaded
+        if it has been successfully loaded, return pid, if not, return PID_ERROR.*/
+
+    struct list *children = &thread_current()->children;
+    struct list_elem *e;
+
+    for (e = list_begin(children); e != list_end(children); e = list_next(e))
+    {
+        struct process *pcb = list_entry(e, struct process, childelem);
+
+        if (pcb->pid == pid)
+        {
+            child = pcb;
+            break;
+        }
+    }
+
 
     if (!child || !child->is_loaded)
         return PID_ERROR;

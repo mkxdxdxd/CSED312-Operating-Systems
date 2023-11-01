@@ -54,10 +54,10 @@ process_execute (const char *file_name)
       return TID_ERROR;
   pcb->file_name = fn_copy;
   pcb->parent = thread_current();
-  pcb->is_loaded = false;
   sema_init(&pcb->load_sema, 0);
-  pcb->is_exited = false;
   sema_init(&pcb->exit_sema, 0);
+  pcb->is_exited = false;
+  pcb->is_loaded = false;
   pcb->exit_status = -1;
 
   thread_name = strtok_r(fn_copy2, " ", &ptr);
@@ -68,19 +68,18 @@ process_execute (const char *file_name)
   {
       palloc_free_page(fn_copy);
       palloc_free_page(pcb);
-      goto done;
+      palloc_free_page(fn_copy2);
+      return tid;
   }
 
   /* Wait until child process successfully loads.
     Otherwise, child process cannot be inserted into the child list. */
   sema_down(&pcb->load_sema);
   if (pcb->pid != PID_ERROR) // When child process has been successfully loaded, push child into the list.
-      list_push_back(thread_get_children(), &pcb->childelem);
+      list_push_back(&thread_current()->children, &pcb->childelem);
 
-done:
-    palloc_free_page(fn_copy2);
-    return tid;
-
+  palloc_free_page(fn_copy2);
+  return tid;
 
 }
 
@@ -88,16 +87,18 @@ done:
    running. */
 //2.2 Argument Passing
 static void
-start_process (void *pcb_k)
+start_process (void *temp)
 { // called by process_executed.
-  struct process *pcb = pcb_k;
+  struct process *pcb = temp;
   char *file_name = pcb->file_name;
+
   struct intr_frame if_;
   bool success;
   int argc = 0;
   char* argv[MAX_ARGS];
 
-  thread_set_pcb(pcb);
+  // set a process's pcb to pcb that has been allocated in process_execute(). 
+  thread_current()->pcb = pcb;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -106,11 +107,19 @@ start_process (void *pcb_k)
   if_.eflags = FLAG_IF | FLAG_MBS;
 
   parse(file_name, &argc, argv);
-  success = pcb->is_loaded = load (argv[0], &if_.eip, &if_.esp);
-  if (success) pcb->pid = thread_tid();
-  else pcb->pid = PID_ERROR;
+  success = load (argv[0], &if_.eip, &if_.esp);
+  pcb->is_loaded = success;
+
+  if (success) {
+    pcb->pid = thread_tid();
+  }
+  else 
+  {
+    pcb->pid = PID_ERROR;
+  }
 
   sema_up(&pcb->load_sema);
+
   if (success){
       save_the_argument_in_stack(argc, argv, &if_.esp);
   }
@@ -197,7 +206,24 @@ save_the_argument_in_stack (int argc, char** argv, void **esp){
 int
 process_wait (tid_t child_tid) 
 { //called by kernel thread in init.c
-  struct process* child = process_get_child(child_tid);
+  struct process* child = NULL;
+  
+  struct list *children = &thread_current()->children; //child list
+  struct list_elem *e;
+
+  // find the child thread with 'child_tid', which you want to wait for its exit.
+  for (e = list_begin(children); e != list_end(children); e = list_next(e))
+  {
+      struct process *pcb = list_entry(e, struct process, childelem);
+
+      if (pcb->pid == child_tid)
+      {
+          child = pcb;
+          break;
+      }
+          
+  }
+
   if (!child)
   {
     return -1;
@@ -205,7 +231,13 @@ process_wait (tid_t child_tid)
 
   sema_down(&child->exit_sema); // parent process wait until child finishes execution
   int exit_status = child->exit_status; // child has exited, remove from the list 
-  process_remove_child(child);
+
+  // now remove child with 'child_tid' from the parent's child list.
+  list_remove(&child->childelem);
+  child->parent = NULL; //separate parent and child process. 
+  if (child->is_exited) 
+      palloc_free_page(child);
+      
   return exit_status; //returns child's exit status, parent process can continue execution.
 }
 
@@ -215,8 +247,8 @@ process_exit (void)
 { 
   //called by syscall_exit() in syscall.c
   struct thread *cur = thread_current ();
-  struct process *pcb = thread_get_pcb();
-  struct list *children = thread_get_children();
+  struct process *pcb = thread_current()->pcb;
+  struct list *children = &thread_current()->children;
   struct list_elem *e;
   struct lock *filesys_lock = syscall_get_filesys_lock();
   uint32_t *pd;
@@ -224,7 +256,17 @@ process_exit (void)
   pcb->is_exited = true;
   // remove child process from child list, free child pcb.
   for (e = list_begin(children); e != list_end(children); e = list_next(e))
-      process_remove_child(list_entry(e, struct process, childelem));
+  {
+    struct process *child =(list_entry(e, struct process, childelem));
+    if (!child)
+          continue;
+
+    list_remove(&child->childelem);
+    child->parent = NULL;
+
+    if (child->is_exited)
+        palloc_free_page(child);
+  }
 
   /* child has been removed from the list, successfully exited.
     parent, waiting in process_wait(), can continue its execution. */
@@ -232,9 +274,9 @@ process_exit (void)
   if (pcb && !pcb->parent)
       palloc_free_page(pcb); //free parent's pcb
 
-    /* Running file(Process file) is stored in struct thread. Close the file that a process has opened */
+  /* Running file(Process file) is stored in struct thread. Close the file that a process has opened */
   lock_acquire(filesys_lock);
-  file_close(thread_get_running_file());
+  file_close(thread_current()->running_file);
   lock_release(filesys_lock);
 
   /* Destroy the current process's page directory and switch back
@@ -451,7 +493,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *eip = (void (*) (void)) ehdr.e_entry;
   
   //running file is set to the file which was just opened. 
-  thread_set_running_file(file);
+  thread_current()->running_file = file;
   file_deny_write(file); // running file should be blocked from writing. 
 
   success = true;
@@ -608,34 +650,4 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
-}
-
-/* Find the current process's child and return its PID. */
-struct process *process_get_child(pid_t pid)
-{
-    struct list *children = thread_get_children();
-    struct list_elem *e;
-
-    for (e = list_begin(children); e != list_end(children); e = list_next(e))
-    {
-        struct process *pcb = list_entry(e, struct process, childelem);
-
-        if (pcb->pid == pid)
-            return pcb;
-    }
-
-    return NULL;
-}
-
-/* Remove child's PCB from the child list and free PCB when child is exited.*/
-void process_remove_child(struct process *child)
-{
-    if (!child)
-        return;
-
-    list_remove(&child->childelem);
-    child->parent = NULL;
-
-    if (child->is_exited)
-        palloc_free_page(child);
 }
