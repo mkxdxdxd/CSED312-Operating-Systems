@@ -56,8 +56,8 @@ process_execute (const char *file_name)
   pcb->parent = thread_current();
   sema_init(&pcb->load_sema, 0);
   sema_init(&pcb->exit_sema, 0);
-  pcb->is_exited = false;
-  pcb->is_loaded = false;
+  pcb->is_exit = false;
+  pcb->is_load = false;
   pcb->exit_status = -1;
 
   thread_name = strtok_r(fn_copy2, " ", &ptr);
@@ -107,20 +107,19 @@ start_process (void *temp)
   if_.eflags = FLAG_IF | FLAG_MBS;
 
   parse(file_name, &argc, argv);
-  success = load (argv[0], &if_.eip, &if_.esp);
-  pcb->is_loaded = success;
+  success = load (argv[0], &if_.eip, &if_.esp); //argv[0] has file name
+  pcb->is_load = success;
 
-  if (success) {
+  if (success) { 
     pcb->pid = thread_tid();
   }
-  else 
-  {
+  else {
     pcb->pid = PID_ERROR;
   }
 
   sema_up(&pcb->load_sema);
 
-  if (success){
+  if (success){ //if load success, push arguments in the stack.
       save_the_argument_in_stack(argc, argv, &if_.esp);
   }
 
@@ -162,35 +161,34 @@ save_the_argument_in_stack (int argc, char** argv, void **esp){
   uintptr_t addr[MAX_ARGS];
   int i;
   
-  //put argv into addr
+  //1. put argv into addr
   for (i = argc - 1; i >= 0;i--){
     *esp -= strlen(argv[i])+1;
     strlcpy(*esp, argv[i], strlen(argv[i])+1);
     addr[i] = (uintptr_t)*esp;
   }
 
-  //allign
+  //2. allign the adress
   *esp = (uintptr_t)*esp & ~0x3;
 
   size_t size = sizeof(uintptr_t);
   *esp -= size;
 
-  //points to the saved address
-  for (i = argc - 1; i >= 0; i--)
-  {
+  //3. points to the saved argument's address
+  for (i = argc - 1; i >= 0; i--){
     *esp -= size;
     *(uintptr_t *)*esp = addr[i];
   }
   *esp -= size;
 
-  //push argv
+  //4. push argv
   *(uintptr_t *)*esp = (uintptr_t)*esp + size;
 
-  //push argc
+  //5. push argc
   *esp -= sizeof(int);
   *(int *)*esp = argc;
 
-  //decrease the pointer when arguments are saved
+  //6. decrease the pointer when arguments are saved
   *esp -= size;
 }
 
@@ -206,36 +204,20 @@ save_the_argument_in_stack (int argc, char** argv, void **esp){
 int
 process_wait (tid_t child_tid) 
 { //called by kernel thread in init.c
-  struct process* child = NULL;
-  
-  struct list *children = &thread_current()->children; //child list
-  struct list_elem *e;
 
   // find the child thread with 'child_tid', which you want to wait for its exit.
-  for (e = list_begin(children); e != list_end(children); e = list_next(e))
-  {
-      struct process *pcb = list_entry(e, struct process, childelem);
-
-      if (pcb->pid == child_tid)
-      {
-          child = pcb;
-          break;
-      }
-          
-  }
+  struct process* child = get_child_process(child_tid);
 
   if (!child)
-  {
     return -1;
-  } 
 
-  sema_down(&child->exit_sema); // parent process wait until child finishes execution
-  int exit_status = child->exit_status; // child has exited, remove from the list 
+  sema_down(&child->exit_sema); // parent process waits until child finishes execution
+  int exit_status = child->exit_status; // child has exited, remove from the child list 
 
   // now remove child with 'child_tid' from the parent's child list.
   list_remove(&child->childelem);
   child->parent = NULL; //separate parent and child process. 
-  if (child->is_exited) 
+  if (child->is_exit) 
       palloc_free_page(child);
       
   return exit_status; //returns child's exit status, parent process can continue execution.
@@ -247,16 +229,16 @@ process_exit (void)
 { 
   //called by syscall_exit() in syscall.c
   struct thread *cur = thread_current ();
-  struct process *pcb = thread_current()->pcb;
+  struct process *pcb = cur->pcb;
   struct list *children = &thread_current()->children;
   struct list_elem *e;
-  struct lock *filesys_lock = syscall_get_filesys_lock();
+  struct lock *filesys_lock = get_file_lock();
   uint32_t *pd;
 
-  pcb->is_exited = true;
-  // remove child process from child list, free child pcb.
-  for (e = list_begin(children); e != list_end(children); e = list_next(e))
-  {
+  pcb->is_exit = true;
+  /* remove child process from child list, free child pcb.
+    now child and parent process become independent */
+  for (e = list_begin(children); e != list_end(children); e = list_next(e)){
     struct process *child =(list_entry(e, struct process, childelem));
     if (!child)
           continue;
@@ -264,7 +246,7 @@ process_exit (void)
     list_remove(&child->childelem);
     child->parent = NULL;
 
-    if (child->is_exited)
+    if (child->is_exit)
         palloc_free_page(child);
   }
 
@@ -273,11 +255,6 @@ process_exit (void)
   sema_up(&pcb->exit_sema); 
   if (pcb && !pcb->parent)
       palloc_free_page(pcb); //free parent's pcb
-
-  /* Running file(Process file) is stored in struct thread. Close the file that a process has opened */
-  lock_acquire(filesys_lock);
-  file_close(thread_current()->running_file);
-  lock_release(filesys_lock);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -295,6 +272,11 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+   /* Running file (Process file) is stored in struct thread. Close the file that a process has opened */
+  lock_acquire(filesys_lock);
+  file_close(thread_current()->running_file);
+  lock_release(filesys_lock); // Now running thread has been closed, you can write on the file. 
 
 }
 
@@ -393,10 +375,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
-  struct lock* file_lock = syscall_get_filesys_lock();
   off_t file_ofs;
   bool success = false;
   int i;
+
+  struct lock* file_lock = get_file_lock();
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -404,7 +387,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
-  /* Open executable file. */
+  // Open file with 'file_name'.
   lock_acquire(file_lock); 
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -650,4 +633,25 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+struct process* get_child_process(pid_t pid)
+{
+  struct list *children = &thread_current()->children;
+  struct list_elem *e;
+  
+  // find the child thread with 'child_tid', which you want to wait for its exit.
+  for (e = list_begin(children); e != list_end(children); e = list_next(e))
+  {
+      struct process *pcb = list_entry(e, struct process, childelem);
+
+      if (pcb->pid == pid)
+      {
+          return pcb;
+      }
+          
+  }
+
+  return NULL;
+
 }

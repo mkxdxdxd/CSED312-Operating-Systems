@@ -18,6 +18,7 @@ static struct lock filesys_lock;
 
 static void syscall_handler(struct intr_frame *);
 static void check_vaddr(const void *vaddr);
+void check (int *esp, int count);
 
 static void syscall_halt(void);
 static pid_t syscall_exec(const char *file);
@@ -31,7 +32,7 @@ static int syscall_write(int fd, void *buffer, unsigned size);
 static int syscall_seek(int fd, unsigned position);
 static unsigned syscall_tell(int fd);
 
-struct lock *syscall_get_filesys_lock(void)
+struct lock *get_file_lock(void)
 {
     return &filesys_lock;
 }
@@ -49,8 +50,7 @@ syscall_handler(struct intr_frame *f UNUSED)
     void *esp = f->esp;
     int syscall_num;
 
-    check_vaddr(esp);
-    check_vaddr(esp + sizeof(uintptr_t) - 1);
+    check(esp, 1);
     syscall_num = *(int *)esp;
 
     switch (syscall_num)
@@ -62,146 +62,106 @@ syscall_handler(struct intr_frame *f UNUSED)
     }
     case SYS_EXIT:
     {
-        int status;
+        check(esp, 2);
+        int exit_status = *(int *)(esp + sizeof(uintptr_t));
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 2 * sizeof(uintptr_t) - 1);
-        status = *(int *)(esp + sizeof(uintptr_t));
-
-        syscall_exit(status);
+        syscall_exit(exit_status);
         NOT_REACHED();
     }
     case SYS_EXEC:
     {
-        char *cmd_line;
+        check(esp, 2);
+        char *file_name = *(char **)(esp + sizeof(uintptr_t));
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 2 * sizeof(uintptr_t) - 1);
-        cmd_line = *(char **)(esp + sizeof(uintptr_t));
-
-        f->eax = (uint32_t)syscall_exec(cmd_line);
+        f->eax = (uint32_t)syscall_exec(file_name);
         break;
     }
     case SYS_WAIT:
     {
-        pid_t pid;
+        check(esp, 2);
+        pid_t process_id = *(pid_t *)(esp + sizeof(uintptr_t));
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 2 * sizeof(uintptr_t) - 1);
-        pid = *(pid_t *)(esp + sizeof(uintptr_t));
-
-        f->eax = (uint32_t)syscall_wait(pid);
+        f->eax = (uint32_t)syscall_wait(process_id);
         break;
     }
     case SYS_CREATE:
     {
-        char *file;
-        unsigned initial_size;
+        check(esp, 3);
+        char *file_name = *(char **)(esp + sizeof(uintptr_t));
+        unsigned file_size = *(unsigned *)(esp + 2 * sizeof(uintptr_t));
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 3 * sizeof(uintptr_t) - 1);
-        file = *(char **)(esp + sizeof(uintptr_t));
-        initial_size = *(unsigned *)(esp + 2 * sizeof(uintptr_t));
-
-        f->eax = (uint32_t)syscall_create(file, initial_size);
+        f->eax = (uint32_t)syscall_create(file_name, file_size);
         break;
     }
     case SYS_REMOVE:
     {
-        char *file;
+        check(esp, 2);
+        char *file_name = *(char **)(esp + sizeof(uintptr_t));
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 2 * sizeof(uintptr_t) - 1);
-        file = *(char **)(esp + sizeof(uintptr_t));
-
-        f->eax = (uint32_t)syscall_remove(file);
+        f->eax = (uint32_t)syscall_remove(file_name);
         break;
     }
     case SYS_OPEN:
     {
-        char *file;
+        check(esp, 2);
+        char *file_name = *(char **)(esp + sizeof(uintptr_t));
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 2 * sizeof(uintptr_t) - 1);
-        file = *(char **)(esp + sizeof(uintptr_t));
-
-        f->eax = (uint32_t)syscall_open(file);
+        f->eax = (uint32_t)syscall_open(file_name);
         break;
     }
     case SYS_FILESIZE:
     {
-        int fd;
+        check(esp, 2);
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 2 * sizeof(uintptr_t) - 1);
-        fd = *(int *)(esp + sizeof(uintptr_t));
+        int fd_idx = *(int *)(esp + sizeof(uintptr_t));
 
-        f->eax = (uint32_t)syscall_filesize(fd);
+        f->eax = (uint32_t)syscall_filesize(fd_idx);
         break;
     }
     case SYS_READ:
     {
-        int fd;
-        void *buffer;
-        unsigned size;
+        check(esp, 4);
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 4 * sizeof(uintptr_t) - 1);
-        fd = *(int *)(esp + sizeof(uintptr_t));
-        buffer = *(void **)(esp + 2 * sizeof(uintptr_t));
-        size = *(unsigned *)(esp + 3 * sizeof(uintptr_t));
+        int fd_idx = *(int *)(esp + sizeof(uintptr_t));
+        void *buffer_address = *(void **)(esp + 2 * sizeof(uintptr_t));
+        unsigned file_size = *(unsigned *)(esp + 3 * sizeof(uintptr_t));
 
-        f->eax = (uint32_t)syscall_read(fd, buffer, size);
+        f->eax = (uint32_t)syscall_read(fd_idx, buffer_address, file_size);
         break;
     }
     case SYS_WRITE:
     {
-        int fd;
-        void *buffer;
-        unsigned size;
+        check(esp, 4);
+        int fd_idx = *(int *)(esp + sizeof(uintptr_t));
+        void *buffer_address = *(void **)(esp + 2 * sizeof(uintptr_t));
+        unsigned file_size = *(unsigned *)(esp + 3 * sizeof(uintptr_t));
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 4 * sizeof(uintptr_t) - 1);
-        fd = *(int *)(esp + sizeof(uintptr_t));
-        buffer = *(void **)(esp + 2 * sizeof(uintptr_t));
-        size = *(unsigned *)(esp + 3 * sizeof(uintptr_t));
-
-        f->eax = (uint32_t)syscall_write(fd, buffer, size);
+        f->eax = (uint32_t)syscall_write(fd_idx, buffer_address, file_size);
         break;
     }
     case SYS_SEEK:
     {
-        int fd;
-        unsigned position;
+        check(esp, 3);
+        int fd_idx = *(int *)(esp + sizeof(uintptr_t));
+        unsigned ptr = *(unsigned *)(esp + 2 * sizeof(uintptr_t));
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 3 * sizeof(uintptr_t) - 1);
-        fd = *(int *)(esp + sizeof(uintptr_t));
-        position = *(unsigned *)(esp + 2 * sizeof(uintptr_t));
-
-        syscall_seek(fd, position);
+        syscall_seek(fd_idx, ptr);
         break;
     }
     case SYS_TELL:
     {
-        int fd;
+        check(esp, 2);
+        int fd_idx = *(int *)(esp + sizeof(uintptr_t));
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 2 * sizeof(uintptr_t) - 1);
-        fd = *(int *)(esp + sizeof(uintptr_t));
-
-        f->eax = (uint32_t)syscall_tell(fd);
+        f->eax = (uint32_t)syscall_tell(fd_idx);
         break;
     }
     case SYS_CLOSE:
     {
-        int fd;
+        check(esp, 2);
+        int fd_idx = *(int *)(esp + sizeof(uintptr_t));
 
-        check_vaddr(esp + sizeof(uintptr_t));
-        check_vaddr(esp + 2 * sizeof(uintptr_t) - 1);
-        fd = *(int *)(esp + sizeof(uintptr_t));
-
-        syscall_close(fd);
+        syscall_close(fd_idx);
         break;
     }
     default:
@@ -210,7 +170,7 @@ syscall_handler(struct intr_frame *f UNUSED)
 }
 
 static void
-check_vaddr(const void *vaddr)
+check_address(const void *vaddr)
 {
     if (!vaddr || !is_user_vaddr(vaddr) ||
         !pagedir_get_page(thread_current()->pagedir, vaddr))
@@ -222,12 +182,13 @@ static void syscall_halt(void)
     shutdown_power_off();
 }
 
-void syscall_exit(int status)
+void syscall_exit(int exit_status)
 {
     struct process *pcb = thread_current()->pcb;
-    pcb->exit_status = status;
-    printf("%s: exit(%d)\n", thread_name(), status);
+    pcb->exit_status = exit_status;
+    printf("%s: exit(%d)\n", thread_name(), exit_status);
 
+    // exit process, so files have to be closed.
     int i;
     for (i = 2; i < 131; i++) {
         if (thread_current()->fdt_list[i] != NULL) {
@@ -235,11 +196,11 @@ void syscall_exit(int status)
         }
     }
 
-    thread_exit(); //Inside thread_exit(), process_exit() is called.
+    thread_exit(); //inside thread_exit(), process_exit() is called, and handle parent-child relationship.
 }
 
 static pid_t
-syscall_exec(const char *cmd_line)
+syscall_exec(const char *file_name)
 {
     /* During syscall_exec, parent process does not need to wait for a child to exit. 
         Instead, it waits only til a child process loads to the memory.
@@ -247,72 +208,69 @@ syscall_exec(const char *cmd_line)
     pid_t pid;
     struct process *child = NULL;
     int i;
+     
+    check_address(file_name);
+    for (i = 0; *(file_name + i); i++)
+        check_address(file_name + i + 1);
 
-    check_vaddr(cmd_line);
-    for (i = 0; *(cmd_line + i); i++)
-        check_vaddr(cmd_line + i + 1);
-
-    pid = process_execute(cmd_line);
+    pid = process_execute(file_name);
     
     /* find child with 'pid' in child list and check if its pcb has been successfuly loaded
         if it has been successfully loaded, return pid, if not, return PID_ERROR.*/
-
     struct list *children = &thread_current()->children;
     struct list_elem *e;
-
-    for (e = list_begin(children); e != list_end(children); e = list_next(e))
-    {
+    for (e = list_begin(children); e != list_end(children); e = list_next(e)){
         struct process *pcb = list_entry(e, struct process, childelem);
-
-        if (pcb->pid == pid)
-        {
+        if (pcb->pid == pid){
             child = pcb;
             break;
         }
     }
 
-
-    if (!child || !child->is_loaded)
+    if (!child || !child->is_load)
         return PID_ERROR;
 
     return pid;
 }
 
 static int
-syscall_wait(pid_t pid)
+syscall_wait(pid_t process_id)
 {
-    return process_wait(pid);
+    // wait for 'proceess_id' process to exit
+    return process_wait(process_id);
 }
 
 static bool
-syscall_create(const char *file, unsigned initial_size)
+syscall_create(const char *file_name, unsigned file_size)
 {
     bool success;
     int i;
 
-    check_vaddr(file);
-    for (i = 0; *(file + i); i++)
-        check_vaddr(file + i + 1);
+    check_address(file_name);
+    for (i = 0; *(file_name + i); i++)
+        check_address(file_name + i + 1);
 
+    //create file with 'file_name' and 'file_size'
     lock_acquire(&filesys_lock);
-    success = filesys_create(file, (off_t)initial_size);
+    success = filesys_create(file_name, (off_t)file_size);
     lock_release(&filesys_lock);
 
     return success;
 }
 
 static bool
-syscall_remove(const char *file)
+syscall_remove(const char *file_name)
 {
     bool success;
     int i;
 
-    check_vaddr(file);
-    for (i = 0; *(file + i); i++)
-        check_vaddr(file + i + 1);
+    check_address(file_name);
+    for (i = 0; *(file_name + i); i++)
+        check_address(file_name + i + 1);
 
+    //remove file with file_name
     lock_acquire(&filesys_lock);
-    success = filesys_remove(file);
+    success = filesys_remove(file_name);
     lock_release(&filesys_lock);
 
     return success;
@@ -320,159 +278,155 @@ syscall_remove(const char *file)
 
 // file related sycall
 static int
-syscall_open(const char *file)
+syscall_open(const char *file_name)
 {
 
-    struct file *new_file;
+    struct file *file_created;
     int i, j, return_num;
 
-    check_vaddr(file);
-    for (i = 0; *(file + i); i++)
-        check_vaddr(file + i + 1);
+    check_address(file_name);
+    for (i = 0; *(file_name + i); i++)
+        check_address(file_name + i + 1);
 
+    //open file with 'file_name'
     lock_acquire(&filesys_lock);
-
-    new_file = filesys_open(file);
-    if (!new_file)
-    {
+    file_created = filesys_open(file_name);
+    if (!file_created){ //if open failed, release lock and return -1
         lock_release(&filesys_lock);
-
         return -1;
     }
 
-    for (j = 2; j < 131; j++)
-    {
-        if (thread_current()->fdt_list[j] == NULL)
-        {
-            thread_current()->fdt_list[j] = new_file;
+    /* if open succeeds, loop around fdt_list and put the pointer in the list*/
+    for (j = 2; j < 131; j++){
+        if (thread_current()->fdt_list[j] == NULL){
+            thread_current()->fdt_list[j] = file_created;
             return_num = j;
             break;
         }
     }
-
     lock_release(&filesys_lock);
     return return_num;
 }
 static int
-syscall_filesize(int fd)
+syscall_filesize(int fd_idx)
 {
-
     int filesize;
-
-    if (thread_current()->fdt_list[fd] == NULL)
-    {
-        //return -1;
+    if (thread_current()->fdt_list[fd_idx] == NULL){ //fild not found
         syscall_exit(-1);
-    }
+    }  
 
+    //return filesize, of which has fdt index 'fd_idx'
     lock_acquire(&filesys_lock);
-    filesize = file_length(thread_current()->fdt_list[fd]);
+    filesize = file_length(thread_current()->fdt_list[fd_idx]);
     lock_release(&filesys_lock);
 
     return filesize;
 }
-static int
-syscall_read(int fd, void *buffer, unsigned size)
-{
 
+static int
+syscall_read(int fd_idx, void *buffer_address, unsigned file_size)
+{
     int bytes_read, i;
 
-    for (i = 0; i < size; i++)
-        check_vaddr(buffer + i);
+    //check if buffer is large enough to fit the file with file_size
+    for (i = 0; i < file_size; i++)
+        check_address(buffer_address + i);
 
-    if (fd == 0)
-    {
+    //STDIN, read from the buffer
+    if (fd_idx == 0){
         unsigned i;
-
-        for (i = 0; i < size; i++)
-            *(uint8_t *)(buffer + i) = input_getc();
-
-        return size;
+        for (i = 0; i < file_size; i++)
+            *(uint8_t *)(buffer_address + i) = input_getc();
+        return file_size;
     }
 
-    if (fd < 2 || fd>130 ||thread_current()->fdt_list[fd] == NULL)
+    //if fd_idx is invalidn or fd_idx is empty, exit the process.
+    if (fd_idx < 2 || fd_idx>130 ||thread_current()->fdt_list[fd_idx] == NULL)
     {
-        //return -1;
         syscall_exit(-1);
     }
 
+    //read inforamtion from the file
     lock_acquire(&filesys_lock);
-    bytes_read = (int)file_read(thread_current()->fdt_list[fd], buffer, (off_t)size);
+    bytes_read = (int)file_read(thread_current()->fdt_list[fd_idx], buffer_address, (off_t)file_size);
     lock_release(&filesys_lock);
 
     return bytes_read;
 }
 static int
-syscall_write(int fd, void *buffer, unsigned size)
+syscall_write(int fd_idx, void *buffer_address, unsigned file_size)
 {
 
     int bytes_written, i;
 
-    for (i = 0; i < size; i++)
-        check_vaddr(buffer + i);
+    //check if buffer is large enough to read the file with file_size.
+    for (i = 0; i < file_size; i++)
+        check_address(buffer_address + i);
 
-    if (fd == 1)
-    {
-        putbuf((const char *)buffer, (size_t)size);
-
-        return size;
+    //STDOUT, write on the buffer.
+    if (fd_idx == 1){
+        putbuf((const char *)buffer_address, (size_t)file_size);
+        return file_size;
     }
 
-    if (fd < 2 || fd>130 ||thread_current()->fdt_list[fd] == NULL)
-    {
-        //return -1;
+    //if fd_idx is invalid or fd_idx is empty, exit the process.
+    if (fd_idx < 2 || fd_idx>130 ||thread_current()->fdt_list[fd_idx] == NULL){
         syscall_exit(-1);
     }
 
+    //write on file
     lock_acquire(&filesys_lock);
-    bytes_written = (int)file_write(thread_current()->fdt_list[fd], buffer, (off_t)size);
+    bytes_written = (int)file_write(thread_current()->fdt_list[fd_idx], buffer_address, (off_t)file_size);
     lock_release(&filesys_lock);
 
     return bytes_written;
 }
 static int
-syscall_seek(int fd, unsigned position)
-{
-
-    if (thread_current()->fdt_list[fd] == NULL)
-    {
-        //return -1;
+syscall_seek(int fd_idx, unsigned ptr)
+{   
+    //fd_idx has no file to seek
+    if (thread_current()->fdt_list[fd_idx] == NULL){ 
         syscall_exit(-1);
     }
-
+    //move the file pointer to ptr
     lock_acquire(&filesys_lock);
-    file_seek(thread_current()->fdt_list[fd], (off_t)position);
+    file_seek(thread_current()->fdt_list[fd_idx], (off_t)ptr);
     lock_release(&filesys_lock);
 }
 
 static unsigned
-syscall_tell(int fd)
+syscall_tell(int fd_idx)
 {
-
     unsigned pos;
-
-    if (thread_current()->fdt_list[fd] == NULL)
-    {
-        //return -1;
+    if (thread_current()->fdt_list[fd_idx] == NULL){
         syscall_exit(-1);
     }
-
+    //find the location of the ptr and return
     lock_acquire(&filesys_lock);
-    pos = (unsigned)file_tell(thread_current()->fdt_list[fd]);
+    pos = (unsigned)file_tell(thread_current()->fdt_list[fd_idx]);
     lock_release(&filesys_lock);
 
     return pos;
 }
-void syscall_close(int fd)
+void syscall_close(int fd_idx)
 {
-    if (fd < 2 || fd>130 || thread_current()->fdt_list[fd] == NULL)
-    {
-        //return -1;
+    //if fd_idx is invalid or fd_idx is empty, exit the process.
+    if (fd_idx < 2 || fd_idx>130 || thread_current()->fdt_list[fd_idx] == NULL){
         syscall_exit(-1);
     }
 
     lock_acquire(&filesys_lock);
-    file_close(thread_current()->fdt_list[fd]);
-    thread_current()->fdt_list[fd] = NULL;
+    file_close(thread_current()->fdt_list[fd_idx]);
+    thread_current()->fdt_list[fd_idx] = NULL;
     lock_release(&filesys_lock);
+}
+
+void check (int *esp, int count)
+{
+  int i;
+  check_address(esp + sizeof(uintptr_t));
+  for (i = 1; i <= count; i++)
+  {
+    check_address(esp + count * sizeof(uintptr_t) - 1);
+  }
 }

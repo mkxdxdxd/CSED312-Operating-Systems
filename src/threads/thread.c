@@ -345,26 +345,10 @@ thread_exit (void)
   process_exit ();
 #endif
 
-  // // parent-child relationship
-  // /* When a thread exits, exiting thread's child must exit first. 
-  //   So child's semaphore should be increased to finish its execution. */
-  // struct list_elem *child = list_begin(&thread_current()->child_thread);
-
-  // while (child != list_end(&thread_current()->child_thread)) {
-  //     struct thread *t = list_entry(child, struct thread, child_thread_elem);
-  //     child = list_remove(child);
-  //     sema_up(&t->exit_sema);
-  // }
-
-  // sema_up (&thread_current()->wait_sema); //parent process is waiting for child's exit so now parent can continue execution
-  // sema_down (&thread_current()->exit_sema); //wait until parent process removes an exiting thread from parent's children list
-
-
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  //list_remove (&thread_current()->child_thread_elem);
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
@@ -652,17 +636,15 @@ init_thread (struct thread *t, const char *name, int priority)
         mlfqs_priority(t,NULL);
     }
 
-  #ifdef USERPROG
+  //project 2 - 1. user prog
   t->pcb = NULL;
   list_init(&t->children);
-  #endif
-
-   //file descriptor 
-   int i;
-   for (i = 0; i < 131; i++) {
-     t->fdt_list[i] = NULL;
-   }
-   t->running_file = NULL;
+  //project 2 - 2. file descriptor 
+  int i;
+  for (i = 0; i < 131; i++) {
+    t->fdt_list[i] = NULL;
+  }
+  t->running_file = NULL;
 
   t->magic = THREAD_MAGIC;
   t->wait_on_lock = NULL;

@@ -114,8 +114,7 @@ struct thread
 
    int nice;
    int recent_cpu;
-
-
+   
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };

@@ -13,6 +13,7 @@ void process_exit (void);
 void process_activate (void);
 static void parse(const char *line, int *argc, char **argv);
 static void save_the_argument_in_stack (int argc, char** argv, void **esp);
+struct process* get_child_process(pid_t pid);
 
 struct process
 {
@@ -22,8 +23,8 @@ struct process
     struct list_elem childelem; // store list of child
     struct semaphore load_sema; // semaphore for loading a process into a memory
     struct semaphore exit_sema; // semaphore for process_wait(), waiting for child process to exit
-    bool is_exited;  // the process has been exited
-    bool is_loaded; // the process is loaded in memory
+    bool is_exit;  // the process has been exited
+    bool is_load; // the process is loaded in memory
     int exit_status; // exit status
 };        
 
