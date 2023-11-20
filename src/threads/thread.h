@@ -2,6 +2,11 @@
 #define THREADS_THREAD_H
 
 #include <debug.h>
+#ifdef VM
+#include <hash.h>
+#include "vm/frame.h"
+#include "vm/page.h"
+#endif
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
@@ -117,6 +122,8 @@ struct thread
    
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+    /*Owned by vm/page.c*/
+    struct hash spt;
   };
 /* List of slept processes in THREAD_BLOCKED state, that is,
    processes that are slept by timer_sleep(). */
@@ -174,6 +181,7 @@ void mlfqs_increment (void);
 struct list *sleep_list_address(void);
 struct thread *get_child_thread(int tid);
 uint32_t *thread_get_pagedir(void);
+struct thread *thread_get_from_tid(tid_t tid);
 
 
 list_less_func less_priority;

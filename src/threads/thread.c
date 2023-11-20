@@ -75,6 +75,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+struct hash *thread_get_spt(void);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -822,4 +823,28 @@ mlfqs_recent_cpu(struct thread *t, void *aux UNUSED)
 struct list *sleep_list_address(void)
 {
     return &sleep_list;
+}
+
+/*used in vm, finding the supplementary page table from struct thread*/
+struct hash *thread_get_spt(void)
+{
+return &thread_current()->spt;
+}
+
+
+/* Returns the thread with tid TID. */
+struct thread *thread_get_from_tid(tid_t tid)
+{
+    struct list_elem *e;
+
+    for (e = list_begin(&all_list); e != list_end(&all_list);
+         e = list_next(e))
+    {
+        struct thread *t = list_entry(e, struct thread, allelem);
+
+        if (t->tid == tid)
+            return t;
+    }
+
+    return NULL;
 }
