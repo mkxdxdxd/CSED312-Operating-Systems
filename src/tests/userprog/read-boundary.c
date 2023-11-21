@@ -26,5 +26,5 @@ test_main (void)
       msg ("expected text:\n%s", sample);
       msg ("text actually read:\n%s", buffer);
       fail ("expected text differs from actual");
-    }
+    } 
 }

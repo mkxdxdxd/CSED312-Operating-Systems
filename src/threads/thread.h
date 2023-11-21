@@ -24,6 +24,7 @@ enum thread_status
    You can redefine this to whatever type you like. */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
+typedef int mapid_t;
 
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
@@ -124,6 +125,9 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
     /*Owned by vm/page.c*/
     struct hash spt;
+    void *esp; //(for stack growth) save stack pointer for handling page fault in kernel 
+    struct list mdt; //(for mmap) mmap descriptor table
+    mapid_t next_mapid; //(for mmap) mmap id for next mapping
   };
 /* List of slept processes in THREAD_BLOCKED state, that is,
    processes that are slept by timer_sleep(). */
@@ -185,6 +189,8 @@ struct thread *thread_get_from_tid(tid_t tid);
 
 
 list_less_func less_priority;
-
+void thread_set_esp(void *new_esp);
+void *thread_get_esp(void);
+struct hash *thread_get_spt(void);
 
 #endif /* threads/thread.h */

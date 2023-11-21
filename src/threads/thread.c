@@ -75,7 +75,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-struct hash *thread_get_spt(void);
+uint32_t *thread_get_pagedir(void);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -653,7 +653,8 @@ init_thread (struct thread *t, const char *name, int priority)
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
 
-
+  list_init(&t->mdt);
+  t->next_mapid = 0;
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -847,4 +848,19 @@ struct thread *thread_get_from_tid(tid_t tid)
     }
 
     return NULL;
+}
+
+uint32_t *thread_get_pagedir(void)
+{
+  return thread_current()->pagedir;
+}
+
+void thread_set_esp(void *new_esp)
+{
+  thread_current()->esp = new_esp;
+}
+
+void *thread_get_esp(void)
+{
+  return thread_current()->esp;
 }

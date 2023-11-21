@@ -3,7 +3,21 @@
 #include <stdio.h>
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
+#include "userprog/syscall.h"
 #include "threads/thread.h"
+
+#ifdef VM
+#include "threads/synch.h"
+#include "threads/vaddr.h"
+#include "vm/frame.h"
+#include "vm/page.h"
+#endif
+
+#ifdef VM
+/* Stack grows up to 8 MB. */
+#define MAX_STACK_SIZE (1 << 23)
+#endif
+
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -126,6 +140,14 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
+#ifdef VM
+  struct hash *spt;
+  struct lock *filesys_lock;
+  bool check_lock;
+  void* upage;
+  void* esp;
+#endif
+  
 
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
@@ -148,8 +170,44 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-   if (user)
-        syscall_exit(-1);
+#ifdef VM
+   //printf("***** page_fault() : page fault at 0x%08x *****\n", fault_addr);
+   spt = thread_get_spt();
+   filesys_lock = syscall_get_filesys_lock();
+   check_lock = lock_held_by_current_thread(filesys_lock);
+   upage = pg_round_down(fault_addr);
+
+   /* A thread cannot aquire the same lock multiple times. 
+      lock will be acquired in page_load() therefore, release lock if a thread possesses a lock. */
+   if (check_lock)
+      lock_release(filesys_lock);
+
+   /* kernel vertual address is accessed, or writing has occured to read only page, exit the process. */
+   if (is_kernel_vaddr(fault_addr) || !not_present)
+      syscall_exit(-1);
+
+   if(user)
+   {
+      esp = f->esp;
+   }
+
+   else {esp = thread_get_esp();}
+
+   if(esp-32<=fault_addr && PHYS_BASE - MAX_STACK_SIZE <= fault_addr)
+   {
+      if(!page_lookup(spt, upage))
+      {
+         page_install_zero(spt, upage);
+      }
+   }
+
+   /* Lazy loading(demand paging), allocate the physical frame and update page table*/
+   load_page(spt, upage);
+
+   if (check_lock)
+      lock_acquire(filesys_lock);
+   return;
+#endif
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

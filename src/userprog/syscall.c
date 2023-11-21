@@ -31,6 +31,8 @@ static int syscall_read(int fd, void *buffer, unsigned size);
 static int syscall_write(int fd, void *buffer, unsigned size);
 static int syscall_seek(int fd, unsigned position);
 static unsigned syscall_tell(int fd);
+struct lock *syscall_get_filesys_lock(void);
+static mapid_t syscall_mmap(int fd, void *addr);
 
 struct lock *get_file_lock(void)
 {
@@ -52,6 +54,10 @@ syscall_handler(struct intr_frame *f UNUSED)
 
     check(esp, 1);
     syscall_num = *(int *)esp;
+
+#ifdef VM
+    thread_set_esp(esp); //store and set the user stack pointer
+#endif
 
     switch (syscall_num)
     {
@@ -164,6 +170,27 @@ syscall_handler(struct intr_frame *f UNUSED)
         syscall_close(fd_idx);
         break;
     }
+    #ifdef VM
+    case SYS_MMAP:
+    {
+        check(esp, 3);
+        int fd= *(int *)(esp + sizeof(uintptr_t));
+        void *addr = *(void **)(esp + 2*sizeof(uintptr_t));
+
+        f->eax = (uint32_t)syscall_mmap(fd, addr);
+        break;
+    }
+    case SYS_MUNMAP:
+    {   
+        check(esp, 2);
+        mapid_t mpid = *(int *)(esp + sizeof(uintptr_t));
+        
+        syscall_munmap(mpid);
+        break;
+    }
+
+    #endif
+
     default:
         syscall_exit(-1);
     }
@@ -172,6 +199,13 @@ syscall_handler(struct intr_frame *f UNUSED)
 static void
 check_address(const void *vaddr)
 {
+    #ifdef VM
+    if (!vaddr || !is_user_vaddr(vaddr)) //in Virtual Memory, we don't need to check the pagedir
+        syscall_exit(-1);
+
+    return;
+    #endif
+    
     if (!vaddr || !is_user_vaddr(vaddr) ||
         !pagedir_get_page(thread_current()->pagedir, vaddr))
         syscall_exit(-1);
@@ -429,4 +463,99 @@ void check (int *esp, int count)
   {
     check_address(esp + count * sizeof(uintptr_t) - 1);
   }
+}
+
+struct lock *syscall_get_filesys_lock(void)
+{
+    return &filesys_lock;
+}
+
+
+static mapid_t syscall_mmap(int fd, void *addr)
+{
+    if (is_kernel_vaddr(addr))
+        syscall_exit(-1);
+
+    if(!addr||pg_ofs(addr)||fd<=1) //check that address and page offset are valid value
+    {
+        return -1;
+    }
+    //look up the file descriptor table with fd
+    struct file* file = thread_current()->fdt_list[fd];
+    if(!file) //if there is no file, we have to return
+    {
+        return -1;
+    }
+    //open the file
+    lock_acquire(&filesys_lock);
+    file = file_reopen(file); //reopen the file
+    if(! file) //if there is no file, return
+    {
+        lock_release(&filesys_lock);
+        return -1;
+    }
+    //get the file size
+    off_t size = file_length(file);
+    if(size == 0)
+    {
+        lock_release(&filesys_lock);
+        return -1;
+    }
+    lock_release(&filesys_lock);
+    /* look up spt and if the given parameter 'addr' already exists in the spt, 
+        you should not map a file. */
+    for(off_t i = 0; i < size; i += PGSIZE)
+    {
+        if(page_lookup(&thread_current()->spt, addr+i))
+        {
+            return -1;
+        }
+    }
+    /*map a file to the memory, using page_install_file, allocate spt entry. 
+        NOTE that mmap does not 'load' a file into a physical frame, instead it allocates spt entry
+        real loading occurs when the process access to address of the memory mapped file! */
+    for (off_t j = 0; j < size; j += PGSIZE)
+    {
+        void *upage = addr + j;
+        uint32_t read_bytes;
+        if(size - j >= PGSIZE){ //if size is bigger than page size(4KB)
+            read_bytes = PGSIZE;
+        }
+        else{
+            read_bytes = size - j;
+        }
+        uint32_t zero_bytes = PGSIZE - read_bytes;
+        //allocate spt entry!
+        page_install_file(&thread_current()->spt, upage, file, j, read_bytes, zero_bytes, true);
+    }
+    //set the mmap table
+    struct mdt_entry* mde = (struct mdt_entry*) malloc(sizeof* mde);
+    mde->mapid = thread_current()->next_mapid++;
+    mde->file = file;
+    mde->size = size;
+    mde->upage = addr;
+    list_push_back(&thread_current()->mdt, &mde->mdt_elem); //push the mdt_elem in current thread's mdt
+    return mde->mapid; //if all set, return the mapid
+}
+
+void syscall_munmap(mapid_t mapid)
+{
+    struct mdt_entry* mde = process_get_mde(mapid);
+    if (!mde) return; //if therer is no mde in current process, we have to return
+
+    lock_acquire(&filesys_lock); 
+    uint32_t* pagedir = thread_current()->pagedir;
+
+    /*delete all memory mapped spt entry. If file elements are change,
+    we have to set dirty bit. When delete the page, we have to check the dirty bit*/
+
+    for (off_t i = 0; i < mde->size; i += PGSIZE) {
+        bool is_dirty = pagedir_is_dirty(pagedir, mde->upage + i);
+        page_delete(&thread_current()->spt, mde->upage + i, is_dirty);
+    }
+
+    file_close(mde->file); //close the reopend file
+    list_remove(&mde->mdt_elem); //remove the mde form mdt
+    free(mde); //free the mde that allocated before
+    lock_release(&filesys_lock);//if finish, lock release
 }

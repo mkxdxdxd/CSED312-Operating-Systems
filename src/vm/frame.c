@@ -77,14 +77,12 @@ void *frame_allocate(enum palloc_flags flags, void *upage)
 
         f->kpage = kpage;
         f->upage = upage; //update the information
-        
-        //printf("***** frame_allocate() : frame for upage 0x%08x is allocated at kpage 0x%08x *****\n", upage, kpage);
-
         f->tid = thread_tid();
 
         hash_insert(&frame_table, &f->list_elem); //insert in frame_tabel that use hash function
     }
 
+    //printf("***** frame_allocate() : frame for upage 0x%08x is allocated at kpage 0x%08x *****\n", upage, kpage);
     
     lock_release(&frame_table_lock);
 

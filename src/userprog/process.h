@@ -14,6 +14,8 @@ void process_activate (void);
 static void parse(const char *line, int *argc, char **argv);
 static void save_the_argument_in_stack (int argc, char** argv, void **esp);
 struct process* get_child_process(pid_t pid);
+//vm
+struct mdt_entry *process_get_mde(mapid_t mapid);
 
 struct process
 {
@@ -26,6 +28,17 @@ struct process
     bool is_exit;  // the process has been exited
     bool is_load; // the process is loaded in memory
     int exit_status; // exit status
+};
+
+//for vm
+struct mdt_entry
+{   /* mmap descriptor table entry*/
+    mapid_t mapid; /* map id for mmap list*/
+    struct file *file; /* file */
+    off_t size; /* file size */
+    void *upage; /* mapped file's virtual address */
+    struct list_elem mdt_elem; /* list element for mmap descriptor table*/
 };        
+
 
 #endif /* userprog/process.h */

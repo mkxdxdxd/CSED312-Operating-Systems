@@ -249,6 +249,9 @@ process_exit (void)
   struct list_elem *e;
   struct lock *filesys_lock = get_file_lock();
   uint32_t *pd;
+#ifdef VM
+    mapid_t max_mapid = thread_current()->next_mapid++, j;
+#endif
 
   pcb->is_exit = true;
   /* remove child process from child list, free child pcb.
@@ -264,6 +267,11 @@ process_exit (void)
     if (child->is_exit)
         palloc_free_page(child);
   }
+
+  #ifdef VM
+      for (j = 0; j < max_mapid; j++)
+        syscall_munmap(j);
+  #endif
 
   /* child has been removed from the list, successfully exited.
     parent, waiting in process_wait(), can continue its execution. */
@@ -285,6 +293,7 @@ process_exit (void)
          that's been freed (and cleared). */
       cur->pagedir = NULL;
       pagedir_activate (NULL);
+
       pagedir_destroy (pd);
     }
 
@@ -572,9 +581,28 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
+
 #ifdef VM
   struct hash *spt = thread_get_spt();
+  while (read_bytes > 0 || zero_bytes > 0)
+  {
+    //if read_bytes exceeds page size or 4KB, set it to PGSIZE
+    size_t p_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+    size_t p_zero_bytes = PGSIZE - p_read_bytes;
+
+    //Lazy loading(demand paging): Do not update frame table. Only initialise the entry of spt. 
+    page_install_file(spt, upage, file, ofs, p_read_bytes, p_zero_bytes, writable); 
+    
+    //bytes left for reading
+    read_bytes -= p_read_bytes;
+    zero_bytes -= p_zero_bytes;
+
+    upage += PGSIZE; //total size of upage
+    ofs += p_read_bytes; //offset increases
+  }
+  return true;
 #endif
+
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -604,10 +632,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           return false; 
         }
 
-      /* If frame allocation succeeds, install spt entry into supplemental page table*/
-#ifdef VM  
-      page_install_frame(spt, upage, kpage);
-#endif
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -681,4 +705,18 @@ struct process* get_child_process(pid_t pid)
 
   return NULL;
 
+}
+
+struct mdt_entry *process_get_mde(mapid_t mapid)
+{
+  struct list *mdt = &thread_current()->mdt;
+  struct list_elem *e;
+
+  for (e = list_begin(mdt); e != list_end(mdt); e = list_next(e))
+  {
+    struct mdt_entry *mde = list_entry(e, struct mdt_entry, mdt_elem);
+    if (mde->mapid == mapid)
+      return mde;
+  }
+  return NULL;
 }

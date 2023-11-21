@@ -33,8 +33,16 @@ struct page
 
 //spt init and free
 void page_spt_init(struct hash *spt);
+void page_delete(struct hash *spt, void *upage, bool is_dirty);
 
 //page allocation
 void page_install_frame(struct hash *spt, void *upage, void *kpage);
+void page_install_file(struct hash *spt, void *upage, struct file *file, off_t offset, uint32_t read_bytes, uint32_t zero_bytes, bool writable);
+void page_install_zero(struct hash *spt, void *upage);
+void load_page(struct hash *spt, void *upage);
+
+//page search
+struct page *page_lookup(struct hash *spt, void *upage);
+
 
 #endif /* vm/page.h */
