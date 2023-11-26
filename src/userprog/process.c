@@ -32,6 +32,8 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static void parse(const char *line, int *argc, char **argv);
+static void save_the_argument_in_stack (int argc, char** argv, void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -249,6 +251,7 @@ process_exit (void)
   struct list_elem *e;
   struct lock *filesys_lock = get_file_lock();
   uint32_t *pd;
+  struct list *locks = &thread_current()->locks;
 #ifdef VM
     mapid_t max_mapid = thread_current()->next_mapid++, j;
 #endif
@@ -271,6 +274,8 @@ process_exit (void)
   #ifdef VM
       for (j = 0; j < max_mapid; j++)
         syscall_munmap(j);
+
+    page_spt_destroy(thread_get_spt());
   #endif
 
   /* child has been removed from the list, successfully exited.
@@ -293,7 +298,9 @@ process_exit (void)
          that's been freed (and cleared). */
       cur->pagedir = NULL;
       pagedir_activate (NULL);
-
+#ifdef VM
+        frame_delete_all(thread_tid());
+#endif
       pagedir_destroy (pd);
     }
 
@@ -657,6 +664,7 @@ setup_stack (void **esp)
         // install a spt entry for spt for stack address space.
         struct hash *spt = thread_get_spt();
         page_install_frame(spt, PHYS_BASE - PGSIZE, kpage);
+        frame_unpin(kpage);
 #endif
         *esp = PHYS_BASE;
       }

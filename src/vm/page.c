@@ -6,11 +6,13 @@
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 #include "filesys/file.h"
 
 // helper in initialising the hash spt
 static hash_hash_func page_hash;
 static hash_less_func page_less;
+static void page_destructor(struct hash_elem *e, void *aux UNUSED);
 
 void page_spt_init(struct hash *spt)
 {
@@ -41,6 +43,9 @@ void page_install_file(struct hash *spt, void *upage, struct file *file, off_t o
     p->zero_bytes = zero_bytes;
     p->write_able = writable;
 
+    p->swap_idx = -1;
+    p->is_dirty = false;
+
 
     if (hash_insert(spt, &p->sptelem)) //insert the spt entry into hash spt
         syscall_exit(-1);
@@ -64,6 +69,8 @@ void page_install_frame(struct hash *spt, void *upage, void *kpage)
 
     p->file_to_read = NULL;
     p->write_able = true;
+    p->swap_idx = -1;
+    p->is_dirty = false;
 
     if (hash_insert(spt, &p->sptelem)) //insert the spt entry into hash spt
         syscall_exit(-1);
@@ -101,7 +108,7 @@ static bool page_less(const struct hash_elem *a, const struct hash_elem *b, void
 }
 
 
-void load_page(struct hash *spt, void *upage)
+void load_page(struct hash *spt, void *upage, bool unpin)
 {
     struct lock *filesys_lock;
     uint32_t *pagedir;
@@ -137,6 +144,10 @@ void load_page(struct hash *spt, void *upage)
     else if (p->status == PAGE_ZERO){
         memset(kpage, 0, PGSIZE);
     }
+    else if (p->status == PAGE_SWAP){
+        swap_in(p->swap_idx, kpage);
+        p->swap_idx = -1;
+    }
     else
         (syscall_exit(-1));
 
@@ -149,6 +160,9 @@ void load_page(struct hash *spt, void *upage)
 
     p->kpage = kpage;
     p->status = PAGE_FRAME;
+
+    if (unpin)
+        frame_unpin(kpage);
 
     return;
 
@@ -166,6 +180,8 @@ void page_install_zero(struct hash *spt, void *upage)
 
     p->file_to_read = NULL;
     p->write_able = true;
+    p->swap_idx = -1;
+    p->is_dirty = false;
 
     if (hash_insert(spt, &p->sptelem))
         syscall_exit(-1);
@@ -186,10 +202,14 @@ void page_delete(struct hash *spt, void *upage, bool is_dirty)
     case PAGE_FILE:
     case PAGE_ZERO:
         break;
+    case PAGE_SWAP:
+        load_page(spt, upage, false);
+        is_dirty = true;
     case PAGE_FRAME:
     {   
         //if the page is allocated in the frame, and you want to delete a page
         //syscall_unmap() calls this
+        frame_pin(p->kpage);
         if(p->file_to_read && is_dirty){ 
             //if mmap file has been modified, its data has to be updated to the file in the disk
             file_write_at(p->file_to_read, upage, p->read_bytes, p->offset);
@@ -206,3 +226,56 @@ void page_delete(struct hash *spt, void *upage, bool is_dirty)
     //free the spt entry
     free(p);
 }
+
+/* Evicts page. Status is set properly. */
+void page_evict(struct hash *spt, void *upage, bool is_dirty)
+{
+    struct page *p;
+    ASSERT(is_user_vaddr(upage));
+
+    p = page_lookup(spt, upage);
+    if (!p)
+        syscall_exit(-1);
+
+    ASSERT(p->status == PAGE_FRAME);
+    ASSERT(p->kpage != NULL);
+
+    if (p->is_dirty || is_dirty)
+    {
+        p->status = PAGE_SWAP;
+        p->swap_idx = swap_out(p->kpage);
+        p->is_dirty = true;
+    }
+    else if (p->file_to_read)
+        p->status = PAGE_FILE;
+    else
+        p->status = PAGE_ZERO;
+
+    p->kpage = NULL;
+}
+
+void page_spt_destroy(struct hash *spt)
+{
+    struct lock *frame_table_lock = frame_get_frame_table_lock();
+
+    lock_acquire(frame_table_lock);
+    hash_destroy(spt, page_destructor);
+    lock_release(frame_table_lock);
+}
+
+
+static void page_destructor(struct hash_elem *e, void *aux UNUSED)
+{
+    struct page *p;
+
+    p = hash_entry(e, struct page, sptelem);
+
+    if (p->status == PAGE_SWAP)
+        swap_free(p->swap_idx);
+    else if (p->status == PAGE_FRAME)
+        frame_pin(p->kpage);
+
+    free(p);
+}
+
+

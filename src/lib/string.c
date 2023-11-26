@@ -279,12 +279,9 @@ void *
 memset (void *dst_, int value, size_t size) 
 {
   unsigned char *dst = dst_;
-
   ASSERT (dst != NULL || size == 0);
-  
   while (size-- > 0)
     *dst++ = value;
-
   return dst_;
 }
 

@@ -27,6 +27,9 @@ struct page
     uint32_t read_bytes, zero_bytes;
     bool write_able;
 
+    size_t swap_idx; /* Swap table index. */
+    bool is_dirty;   /* Whether page have ever been evicted. */
+
     enum page_type status; // page type defined just above
     struct hash_elem sptelem; // hash element for supplemental page table
 };
@@ -39,10 +42,13 @@ void page_delete(struct hash *spt, void *upage, bool is_dirty);
 void page_install_frame(struct hash *spt, void *upage, void *kpage);
 void page_install_file(struct hash *spt, void *upage, struct file *file, off_t offset, uint32_t read_bytes, uint32_t zero_bytes, bool writable);
 void page_install_zero(struct hash *spt, void *upage);
-void load_page(struct hash *spt, void *upage);
+void load_page(struct hash *spt, void *upage, bool unpin);
 
 //page search
 struct page *page_lookup(struct hash *spt, void *upage);
+void page_evict(struct hash *spt, void *upage, bool is_dirty);
+void page_spt_destroy(struct hash *spt);
+
 
 
 #endif /* vm/page.h */

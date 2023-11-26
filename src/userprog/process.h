@@ -11,8 +11,7 @@ tid_t process_execute (const char *file_name);
 int process_wait (tid_t);
 void process_exit (void);
 void process_activate (void);
-static void parse(const char *line, int *argc, char **argv);
-static void save_the_argument_in_stack (int argc, char** argv, void **esp);
+
 struct process* get_child_process(pid_t pid);
 //vm
 struct mdt_entry *process_get_mde(mapid_t mapid);

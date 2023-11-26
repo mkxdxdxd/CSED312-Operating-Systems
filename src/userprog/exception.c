@@ -202,7 +202,7 @@ page_fault (struct intr_frame *f)
    }
 
    /* Lazy loading(demand paging), allocate the physical frame and update page table*/
-   load_page(spt, upage);
+   load_page(spt, upage, true);
 
    if (check_lock)
       lock_acquire(filesys_lock);

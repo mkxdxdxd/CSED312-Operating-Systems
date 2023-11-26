@@ -120,14 +120,15 @@ struct thread
 
    int nice;
    int recent_cpu;
-   
-    /* Owned by thread.c. */
-    unsigned magic;                     /* Detects stack overflow. */
-    /*Owned by vm/page.c*/
-    struct hash spt;
-    void *esp; //(for stack growth) save stack pointer for handling page fault in kernel 
-    struct list mdt; //(for mmap) mmap descriptor table
-    mapid_t next_mapid; //(for mmap) mmap id for next mapping
+
+   /* Owned by thread.c. */
+   unsigned magic;                     /* Detects stack overflow. */
+   /*Owned by vm/page.c*/
+   struct hash spt;
+   void *esp; //(for stack growth) save stack pointer for handling page fault in kernel 
+   struct list mdt; //(for mmap) mmap descriptor table
+   mapid_t next_mapid; //(for mmap) mmap id for next mapping
+   struct list locks; // list of locks that a thread has been acquired.
   };
 /* List of slept processes in THREAD_BLOCKED state, that is,
    processes that are slept by timer_sleep(). */
