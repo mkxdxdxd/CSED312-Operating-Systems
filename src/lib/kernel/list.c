@@ -82,9 +82,10 @@ struct list_elem *
 list_next (struct list_elem *elem)
 {
   if (!is_interior(elem)){
-    if (!is_head(elem)) //case of tail
+    if (!is_head(elem)){ //case of tail
     ASSERT(is_tail(elem));// when pass, is a tail
     ASSERT(is_interior(elem->prev));//when pass, the list is empty
+    }
   }
   ASSERT (is_head (elem) || is_interior (elem));
   return elem->next;

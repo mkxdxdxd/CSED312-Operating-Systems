@@ -43,7 +43,7 @@ void page_install_file(struct hash *spt, void *upage, struct file *file, off_t o
     p->zero_bytes = zero_bytes;
     p->write_able = writable;
 
-    p->swap_idx = -1;
+    p->index_num_for_swap = -1;
     p->is_dirty = false;
 
 
@@ -69,7 +69,7 @@ void page_install_frame(struct hash *spt, void *upage, void *kpage)
 
     p->file_to_read = NULL;
     p->write_able = true;
-    p->swap_idx = -1;
+    p->index_num_for_swap = -1;
     p->is_dirty = false;
 
     if (hash_insert(spt, &p->sptelem)) //insert the spt entry into hash spt
@@ -104,16 +104,23 @@ static bool page_less(const struct hash_elem *a, const struct hash_elem *b, void
 {
     struct page *a_p = hash_entry(a, struct page, sptelem);
     struct page *b_p = hash_entry(b, struct page, sptelem);
-    return a_p->upage < b_p->upage;
+
+    if(a_p->upage < b_p->upage)
+    {
+        return 1;
+    }
+    else{
+        return 0;
+    }
+    //return a_p->upage < b_p->upage;
 }
 
 
 void load_page(struct hash *spt, void *upage, bool unpin)
 {
-    struct lock *filesys_lock;
-    uint32_t *pagedir;
-
-    ASSERT(is_user_vaddr(upage));
+    struct lock *lock_with_filesys;
+    
+    ASSERT(is_user_vaddr(upage)); //check in valid space
 
     struct page *p= page_lookup(spt,upage);
     if(!p) {
@@ -128,30 +135,31 @@ void load_page(struct hash *spt, void *upage, bool unpin)
 
     if(p->status == PAGE_FILE)
     {
-        filesys_lock = syscall_get_filesys_lock();
-        lock_acquire(filesys_lock);
+        lock_with_filesys = syscall_get_filesys_lock();
+        lock_acquire(lock_with_filesys);
 
         if(file_read_at(p->file_to_read, kpage, p->read_bytes, p->offset) != p->read_bytes)
         {
             frame_free(kpage);
-            lock_release(filesys_lock);
+            lock_release(lock_with_filesys);
             syscall_exit(-1);
         }
 
         memset(kpage + p->read_bytes, 0, p->zero_bytes);
-        lock_release(filesys_lock);
+        lock_release(lock_with_filesys);
     }
     else if (p->status == PAGE_ZERO){
         memset(kpage, 0, PGSIZE);
     }
     else if (p->status == PAGE_SWAP){
-        swap_in(p->swap_idx, kpage);
-        p->swap_idx = -1;
+        swap_in(p->index_num_for_swap, kpage);
+        p->index_num_for_swap = -1;
     }
     else
         (syscall_exit(-1));
 
-    pagedir = thread_get_pagedir();
+
+    uint32_t * pagedir = thread_get_pagedir();
     if(!pagedir_set_page(pagedir, upage, kpage, p->write_able))
     {
         frame_free(kpage);
@@ -180,7 +188,7 @@ void page_install_zero(struct hash *spt, void *upage)
 
     p->file_to_read = NULL;
     p->write_able = true;
-    p->swap_idx = -1;
+    p->index_num_for_swap = -1;
     p->is_dirty = false;
 
     if (hash_insert(spt, &p->sptelem))
@@ -200,6 +208,7 @@ void page_delete(struct hash *spt, void *upage, bool is_dirty)
 
     switch(p->status){
     case PAGE_FILE:
+        break;
     case PAGE_ZERO:
         break;
     case PAGE_SWAP:
@@ -239,26 +248,27 @@ void page_delete(struct hash *spt, void *upage, bool is_dirty)
 void page_evict(struct hash *spt, void *upage, bool is_dirty)
 {
     struct page *p;
-    ASSERT(is_user_vaddr(upage));
+    ASSERT(is_user_vaddr(upage)); //check that upage is in valid space
 
-    p = page_lookup(spt, upage);
+    p = page_lookup(spt, upage); //get the upage in spt
     if (!p)
+    {
         syscall_exit(-1);
+    } //if there is no page, call the syscall
 
-    ASSERT(p->status == PAGE_FRAME);
-    ASSERT(p->kpage != NULL);
+    ASSERT(p->status == PAGE_FRAME); //if status is PAGE_FRAME assertion
+    ASSERT(p->kpage != NULL); //if kpage have nothing, assertion
 
-    if (p->is_dirty || is_dirty)
+    if (p->is_dirty || is_dirty) //if have been dirty, change the status and swap_out
     {
         p->status = PAGE_SWAP;
-        p->swap_idx = swap_out(p->kpage);
-        p->is_dirty = true;
+        p->index_num_for_swap = swap_out(p->kpage);
+        p->is_dirty = true; //change the memory
     }
     else if (p->file_to_read)
         p->status = PAGE_FILE;
     else
         p->status = PAGE_ZERO;
-
     p->kpage = NULL;
 }
 
@@ -274,16 +284,18 @@ void page_spt_destroy(struct hash *spt)
 
 static void page_destructor(struct hash_elem *e, void *aux UNUSED)
 {
-    struct page *p;
+    struct page *paging_to_destruct = hash_entry(e, struct page, sptelem);
 
-    p = hash_entry(e, struct page, sptelem);
+    if (paging_to_destruct->status == PAGE_SWAP)
+    {
+        swap_free(paging_to_destruct->index_num_for_swap);
+    }
+    else if (paging_to_destruct->status == PAGE_FRAME)
+    {
+        frame_pin(paging_to_destruct->kpage);
+    }        
 
-    if (p->status == PAGE_SWAP)
-        swap_free(p->swap_idx);
-    else if (p->status == PAGE_FRAME)
-        frame_pin(p->kpage);
-
-    free(p);
+    free(paging_to_destruct);
 }
 
 

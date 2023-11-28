@@ -27,8 +27,8 @@ struct page
     uint32_t read_bytes, zero_bytes;
     bool write_able;
 
-    size_t swap_idx; /* Swap table index. */
-    bool is_dirty;   /* Whether page have ever been evicted. */
+    size_t index_num_for_swap; //to check the number of swapping page
+    bool is_dirty; //if there is experience of dirty
 
     enum page_type status; // page type defined just above
     struct hash_elem sptelem; // hash element for supplemental page table

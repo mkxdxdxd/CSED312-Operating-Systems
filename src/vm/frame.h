@@ -13,7 +13,7 @@ void frame_init(void);
 void *frame_allocate(enum palloc_flags, void *);
 void frame_free(void *);
 
-void frame_delete_all(tid_t);
+void frame_remove_all(tid_t);
 void frame_pin(void *kpage);
 void frame_unpin(void *kpage);
 

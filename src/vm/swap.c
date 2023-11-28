@@ -4,68 +4,75 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 
-#define NUM_SECTORS_PER_PAGE (PGSIZE / BLOCK_SECTOR_SIZE)
 
-static struct block *swap_block;
-static struct bitmap *swap_table;
-static size_t swap_table_size;
-static struct lock swap_table_lock;
+static struct block *swap_block; // we use when swapping
+static struct bitmap *swap_table; 
+static size_t swap_table_size; //store the swap_table's size
+static struct lock swap_table_lock; //when we use swap_table, we have to check lock
 
 
 void swap_init(void)
 {
+    /*get the swap_block with block*/
     swap_block = block_get_role(BLOCK_SWAP);
-    swap_table_size = block_size(swap_block) / NUM_SECTORS_PER_PAGE;
+    /*calculate swap_table_size with block_size*/
+    swap_table_size = block_size(swap_block) / 8;
+    /*make the table with bitmap*/
     swap_table = bitmap_create(swap_table_size);
+    /*initialize the swap_table_lock*/
     lock_init(&swap_table_lock);
 
 }
 
-void swap_in(size_t swap_idx, void *kpage)
+// Assign pages from swap disk to new frame
+void swap_in(size_t index_swap, void *kpage)
 {
     size_t i;
 
-    ASSERT(swap_idx < swap_table_size);
+    ASSERT(index_swap < swap_table_size);//if bigger than swap_table_size, assertion
     ASSERT(is_kernel_vaddr(kpage));
 
+    //we have to check swap_table
     lock_acquire(&swap_table_lock);
 
-    for (i = 0; i < NUM_SECTORS_PER_PAGE; i++)
-        block_read(swap_block, swap_idx * NUM_SECTORS_PER_PAGE + i,
-                   kpage + i * BLOCK_SECTOR_SIZE);
-
-    ASSERT(bitmap_test(swap_table, swap_idx));
-    bitmap_set(swap_table, swap_idx, false);
+    /*Copy swap block corresponding to swap_idx to frame connected to kpage*/
+    for (i = 0; i < 8; i++)
+    {
+        block_read(swap_block, index_swap * 8 + i, kpage + i * BLOCK_SECTOR_SIZE); //block read in swap_block with index_swap number
+    }
+           
+    ASSERT(bitmap_test(swap_table, index_swap));
+    bitmap_set(swap_table, index_swap, false); //we have to set the swap_table with false
 
     lock_release(&swap_table_lock);
 }
 
 size_t swap_out(void *kpage)
 {
-    size_t swap_idx;
+    size_t index_num_swap;
+    ASSERT(is_kernel_vaddr(kpage)); //check that kpage is in valid space
+
+    lock_acquire(&swap_table_lock); //to change the swap_table
+
+    index_num_swap = bitmap_scan_and_flip(swap_table, 0, 1, false); //check the swap_table and flip the status and retrun the swap number
+    ASSERT(index_num_swap < swap_table_size); //size check and assertion
+
     size_t i;
-    ASSERT(is_kernel_vaddr(kpage));
-
-    lock_acquire(&swap_table_lock);
-
-    swap_idx = bitmap_scan_and_flip(swap_table, 0, 1, false);
-    ASSERT(swap_idx < swap_table_size);
-    for (i = 0; i < NUM_SECTORS_PER_PAGE; i++)
-        block_write(swap_block, swap_idx * NUM_SECTORS_PER_PAGE + i,
-                    kpage + i * BLOCK_SECTOR_SIZE);
+    for (i = 0; i < 8; i++)
+    {
+        block_write(swap_block, index_num_swap * 8 + i, kpage + i * BLOCK_SECTOR_SIZE); //same situation with swap_in, but write at block
+    }
+               
     lock_release(&swap_table_lock);
-    return swap_idx;
+    return index_num_swap; //return the number
 }
 
 
-void swap_free(size_t swap_idx)
+void swap_free(size_t index_swap)
 {
-    ASSERT(swap_idx < swap_table_size);
-
-    lock_acquire(&swap_table_lock);
-
-    ASSERT(bitmap_test(swap_table, swap_idx));
-    bitmap_set(swap_table, swap_idx, false);
-
+    ASSERT(index_swap < swap_table_size); //check that the size and index
+    lock_acquire(&swap_table_lock); //to check the swap_table
+    ASSERT(bitmap_test(swap_table, index_swap));
+    bitmap_set(swap_table, index_swap, false); //setting the swap_table with false in bitmap
     lock_release(&swap_table_lock);
 }

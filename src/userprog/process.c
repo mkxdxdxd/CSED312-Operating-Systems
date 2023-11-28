@@ -288,7 +288,7 @@ process_exit (void)
   }
 
   #ifdef VM
-      for (j = 0; j < max_mapid; j++)
+      for (j = 0; j < max_mapid; j++) //unmap the file from memory
         syscall_munmap(j);
 
     page_spt_destroy(thread_get_spt());
@@ -315,7 +315,7 @@ process_exit (void)
       cur->pagedir = NULL;
       pagedir_activate (NULL);
 #ifdef VM
-        frame_delete_all(thread_tid());
+      frame_remove_all(thread_tid()); // remove all frame from frame table with 'tid'
 #endif
       pagedir_destroy (pd);
     }
