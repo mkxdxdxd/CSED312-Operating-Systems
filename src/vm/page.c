@@ -128,7 +128,7 @@ void load_page(struct hash *spt, void *upage, bool unpin)
 
     if(p->status == PAGE_FILE)
     {
-        filesys_lock = get_file_lock();
+        filesys_lock = syscall_get_filesys_lock();
         lock_acquire(filesys_lock);
 
         if(file_read_at(p->file_to_read, kpage, p->read_bytes, p->offset) != p->read_bytes)
@@ -205,12 +205,20 @@ void page_delete(struct hash *spt, void *upage, bool is_dirty)
     case PAGE_SWAP:
         load_page(spt, upage, false);
         is_dirty = true;
+        frame_pin(p->kpage);
+        if(p->file_to_read && (p->is_dirty || is_dirty)){ 
+            //if mmap file has been modified, its data has to be updated to the file in the disk
+            file_write_at(p->file_to_read, upage, p->read_bytes, p->offset);
+        }
+        //free the physical frame
+        frame_free(p->kpage);
+        break;
     case PAGE_FRAME:
     {   
         //if the page is allocated in the frame, and you want to delete a page
         //syscall_unmap() calls this
         frame_pin(p->kpage);
-        if(p->file_to_read && is_dirty){ 
+        if(p->file_to_read && (p->is_dirty || is_dirty)){ 
             //if mmap file has been modified, its data has to be updated to the file in the disk
             file_write_at(p->file_to_read, upage, p->read_bytes, p->offset);
         }

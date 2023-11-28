@@ -215,7 +215,7 @@ lock_acquire (struct lock *lock)
                 struct thread *donee = lock->holder; //save lock address
                 
                 //max donation 8
-                for(i;i<8;i++)
+                for(i=0;i<8;i++)
                 {
                   if(donee != NULL)
                   {
@@ -277,7 +277,6 @@ lock_release (struct lock *lock)
 
   //remove lock from the lock_list
   struct list *locks = &thread_current()->locks;
-
   for (e = list_begin(locks); e != list_end(locks); e = list_next(e)){
     if (list_entry(e, struct lock, list_elem) == lock)
     {

@@ -799,6 +799,7 @@ remove_with_lock (struct lock *lock)
     if (t->wait_on_lock == lock)
       list_remove (&t->doelem);
   }
+  
 }
 
 /* Calculates load_avg. */
@@ -838,7 +839,6 @@ return &thread_current()->spt;
 struct thread *thread_get_from_tid(tid_t tid)
 {
     struct list_elem *e;
-
     for (e = list_begin(&all_list); e != list_end(&all_list);
          e = list_next(e))
     {

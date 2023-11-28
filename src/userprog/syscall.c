@@ -14,10 +14,13 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 
+#include "threads/malloc.h"
+#include "vm/page.h"
+
 static struct lock filesys_lock;
 
 static void syscall_handler(struct intr_frame *);
-static void check_vaddr(const void *vaddr);
+static void check_address(const void *vaddr);
 void check (int *esp, int count);
 
 static void syscall_halt(void);
@@ -29,15 +32,14 @@ static int syscall_open(const char *file);
 static int syscall_filesize(int fd);
 static int syscall_read(int fd, void *buffer, unsigned size);
 static int syscall_write(int fd, void *buffer, unsigned size);
-static int syscall_seek(int fd, unsigned position);
+static void syscall_seek(int fd, unsigned position);
 static unsigned syscall_tell(int fd);
-struct lock *syscall_get_filesys_lock(void);
 static mapid_t syscall_mmap(int fd, void *addr);
 
-struct lock *get_file_lock(void)
-{
-    return &filesys_lock;
-}
+// struct lock *get_file_lock(void)
+// {
+//     return &filesys_lock;
+// }
 
 /* Registers the system call interrupt handler. */
 void syscall_init(void)
@@ -223,12 +225,7 @@ void syscall_exit(int exit_status)
     printf("%s: exit(%d)\n", thread_name(), exit_status);
 
     // exit process, so files have to be closed.
-    int i;
-    for (i = 2; i < 131; i++) {
-        if (thread_current()->fdt_list[i] != NULL) {
-            syscall_close(i);
-        }
-    }
+    
 
     thread_exit(); //inside thread_exit(), process_exit() is called, and handle parent-child relationship.
 }
@@ -415,7 +412,7 @@ syscall_write(int fd_idx, void *buffer_address, unsigned file_size)
 
     return bytes_written;
 }
-static int
+static void
 syscall_seek(int fd_idx, unsigned ptr)
 {   
     //fd_idx has no file to seek
@@ -442,6 +439,7 @@ syscall_tell(int fd_idx)
 
     return pos;
 }
+
 void syscall_close(int fd_idx)
 {
     //if fd_idx is invalid or fd_idx is empty, exit the process.
@@ -470,7 +468,7 @@ struct lock *syscall_get_filesys_lock(void)
     return &filesys_lock;
 }
 
-
+#ifdef VM
 static mapid_t syscall_mmap(int fd, void *addr)
 {
     if (is_kernel_vaddr(addr))
@@ -480,15 +478,20 @@ static mapid_t syscall_mmap(int fd, void *addr)
     {
         return -1;
     }
-    //look up the file descriptor table with fd
-    struct file* file = thread_current()->fdt_list[fd];
-    if(!file) //if there is no file, we have to return
+    if(!(thread_current()->fdt_list))
     {
         return -1;
     }
-    //open the file
+    //look up the file descriptor table with fd
     lock_acquire(&filesys_lock);
-    file = file_reopen(file); //reopen the file
+    struct file* file;
+    //if(!file) //if there is no file, we have to return
+    //{
+       // return -1;
+    //}
+    //open the file
+    
+    file = file_reopen(thread_current()->fdt_list[fd]); //reopen the file
     if(! file) //if there is no file, return
     {
         lock_release(&filesys_lock);
@@ -559,3 +562,4 @@ void syscall_munmap(mapid_t mapid)
     free(mde); //free the mde that allocated before
     lock_release(&filesys_lock);//if finish, lock release
 }
+#endif

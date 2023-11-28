@@ -249,7 +249,7 @@ process_exit (void)
   struct process *pcb = cur->pcb;
   struct list *children = &thread_current()->children;
   struct list_elem *e;
-  struct lock *filesys_lock = get_file_lock();
+  struct lock *filesys_lock = syscall_get_filesys_lock();
   uint32_t *pd;
   struct list *locks = &thread_current()->locks;
 #ifdef VM
@@ -269,6 +269,22 @@ process_exit (void)
 
     if (child->is_exit)
         palloc_free_page(child);
+  }
+
+  int i;
+    for (i = 2; i < 131; i++) {
+        if (thread_current()->fdt_list[i] != NULL) {
+            syscall_close(i);
+        }
+    }
+
+     /* Running file (Process file) is stored in struct thread. Close the file that a process has opened */
+  lock_acquire(filesys_lock);
+  file_close(thread_current()->running_file);
+  lock_release(filesys_lock); // Now running thread has been closed, you can write on the file. 
+
+  for (e = list_begin(locks); e != list_end(locks); e = list_next(e)){
+        lock_release(list_entry(e, struct lock, list_elem));
   }
 
   #ifdef VM
@@ -304,10 +320,6 @@ process_exit (void)
       pagedir_destroy (pd);
     }
 
-   /* Running file (Process file) is stored in struct thread. Close the file that a process has opened */
-  lock_acquire(filesys_lock);
-  file_close(thread_current()->running_file);
-  lock_release(filesys_lock); // Now running thread has been closed, you can write on the file. 
 
 }
 
@@ -410,7 +422,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
-  struct lock* file_lock = get_file_lock();
+  struct lock* file_lock = syscall_get_filesys_lock();
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -707,8 +719,7 @@ struct process* get_child_process(pid_t pid)
       if (pcb->pid == pid)
       {
           return pcb;
-      }
-          
+      }       
   }
 
   return NULL;
@@ -719,7 +730,6 @@ struct mdt_entry *process_get_mde(mapid_t mapid)
 {
   struct list *mdt = &thread_current()->mdt;
   struct list_elem *e;
-
   for (e = list_begin(mdt); e != list_end(mdt); e = list_next(e))
   {
     struct mdt_entry *mde = list_entry(e, struct mdt_entry, mdt_elem);

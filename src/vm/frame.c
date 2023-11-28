@@ -16,7 +16,7 @@ struct frame
     //id of the thread who has this frame entry
     tid_t tid; 
     //hash element for the frame table
-    struct hash_elem list_elem; 
+    struct hash_elem ftelem; 
     //list element for frame clock
     struct list_elem fcelem;
     bool is_pinned;
@@ -43,17 +43,18 @@ void frame_init(void)
 {
     //initialize the frame table with hash table
     hash_init(&frame_table, frame_hash, frame_less, NULL);
-    //initialize frame_table_lock
-    lock_init(&frame_table_lock);
+    
     //initialize frame clock & frame clock hand
     list_init(&frame_clock);
     frame_clock_hand = list_head(&frame_clock);
+    //initialize frame_table_lock
+    lock_init(&frame_table_lock);
 }
 
 static unsigned int frame_hash(const struct hash_elem *e, void *aux UNUSED)
 {
     //function for hash_init
-    struct frame *f = hash_entry(e, struct frame, list_elem);
+    struct frame *f = hash_entry(e, struct frame, ftelem);
 
     return hash_bytes(&f->kpage, sizeof f->kpage);
 }
@@ -61,8 +62,8 @@ static unsigned int frame_hash(const struct hash_elem *e, void *aux UNUSED)
 static bool frame_less(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
 {
     //function for hash_init to comparing
-    struct frame *a_f = hash_entry(a, struct frame, list_elem);
-    struct frame *b_f = hash_entry(b, struct frame, list_elem);
+    struct frame *a_f = hash_entry(a, struct frame, ftelem);
+    struct frame *b_f = hash_entry(b, struct frame, ftelem);
 
     return a_f->kpage < b_f->kpage;
 }
@@ -95,7 +96,7 @@ void *frame_allocate(enum palloc_flags flags, void *upage)
     f->tid = thread_tid();
     f->is_pinned = true;
 
-    hash_insert(&frame_table, &f->list_elem); //insert in frame_tabel that use hash function
+    hash_insert(&frame_table, &f->ftelem); //insert in frame_tabel that use hash function
     list_push_back(&frame_clock, &f->fcelem);
 
 
@@ -120,7 +121,7 @@ void frame_free(void *kpage)
     if (!f)
         PANIC("Invalid kpage");
 
-    hash_delete(&frame_table, &f->list_elem); //delete the element in hash_table
+    hash_delete(&frame_table, &f->ftelem); //delete the element in hash_table
     list_remove(&f->fcelem);
     palloc_free_page(f->kpage); //palloc_free the kpage
 
@@ -139,14 +140,14 @@ static struct frame *frame_lookup(void *kpage)
     struct hash_elem *e;
 
     f.kpage = kpage;
-    e = hash_find(&frame_table, &f.list_elem);
+    e = hash_find(&frame_table, &f.ftelem);
 
     if(e==NULL)
     {
         return NULL;
     }
 
-    return hash_entry(e, struct frame, list_elem);
+    return hash_entry(e, struct frame, ftelem);
 }
 
 static void frame_evict(void)
@@ -163,7 +164,7 @@ static struct frame *frame_find_victim(void)
 {
     size_t size = list_size(&frame_clock);
     size_t i;
-    for (i = 0; i < size + 1; i++)
+    for (i = 0; i < 2 * size; i++) //change
     {
         struct frame *f;
         struct thread *t;
@@ -175,11 +176,12 @@ static struct frame *frame_find_victim(void)
         if (!t)
             PANIC("Invalid tid");
 
-        if (!f->is_pinned)
+        if (!f->is_pinned){
             if (!pagedir_is_accessed(t->pagedir, f->upage))
                 return f;
             else
                 pagedir_set_accessed(t->pagedir, f->upage, false);
+        }
     }
     PANIC("Cannot find victim");
 }
@@ -195,7 +197,6 @@ static struct list_elem *frame_clock_next(struct list_elem *e)
 void frame_delete_all(tid_t tid)
 {
     struct list_elem *e;
-
     lock_acquire(&frame_table_lock);
 
     for (e = list_begin(&frame_clock); e != list_end(&frame_clock);)
@@ -204,12 +205,13 @@ void frame_delete_all(tid_t tid)
 
         if (f->tid == tid)
         {
-            hash_delete(&frame_table, &f->list_elem);
+            hash_delete(&frame_table, &f->ftelem);
             e = list_remove(e);
             free(f);
         }
-        else
+        else{
             e = list_next(e);
+        }
     }
 
     lock_release(&frame_table_lock);
