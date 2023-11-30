@@ -263,12 +263,12 @@ process_exit (void)
     struct process *child =(list_entry(e, struct process, childelem));
     if (!child)
           continue;
-
     list_remove(&child->childelem);
     child->parent = NULL;
 
     if (child->is_exit)
         palloc_free_page(child);
+
   }
 
   int i;
@@ -315,6 +315,7 @@ process_exit (void)
       cur->pagedir = NULL;
       pagedir_activate (NULL);
 #ifdef VM
+
       frame_remove_all(thread_tid()); // remove all frame from frame table with 'tid'
 #endif
       pagedir_destroy (pd);
@@ -678,6 +679,7 @@ setup_stack (void **esp)
         // install a spt entry for spt for stack address space.
         struct hash *spt = thread_get_spt();
         page_install_frame(spt, PHYS_BASE - PGSIZE, kpage);
+        //we have to frame unpin because success kpage's frame is already allocated
         frame_unpin(kpage);
 #endif
         *esp = PHYS_BASE;
@@ -721,7 +723,7 @@ struct process* get_child_process(pid_t pid)
       if (pcb->pid == pid)
       {
           return pcb;
-      }       
+      }
   }
 
   return NULL;
@@ -738,5 +740,6 @@ struct mdt_entry *process_get_mde(mapid_t mapid)
     if (mde->mapid == mapid)
       return mde;
   }
+  
   return NULL;
 }

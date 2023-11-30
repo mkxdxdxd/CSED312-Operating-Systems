@@ -112,12 +112,15 @@ static bool page_less(const struct hash_elem *a, const struct hash_elem *b, void
     else{
         return 0;
     }
-    //return a_p->upage < b_p->upage;
 }
 
 
 void load_page(struct hash *spt, void *upage, bool unpin)
 {
+    /*called by page fault, 1. allocate the page frame in physical memory
+                            2. set memory according to the page status
+                            3. set the page table
+    */
     struct lock *lock_with_filesys;
     
     ASSERT(is_user_vaddr(upage)); //check in valid space
@@ -169,6 +172,8 @@ void load_page(struct hash *spt, void *upage, bool unpin)
     p->kpage = kpage;
     p->status = PAGE_FRAME;
 
+
+    //after page table setting, ready to evcition. unpin the all frame
     if (unpin)
         frame_unpin(kpage);
 
@@ -195,6 +200,7 @@ void page_install_zero(struct hash *spt, void *upage)
         syscall_exit(-1);
 }
 
+//called by syscall_munmap()
 void page_delete(struct hash *spt, void *upage, bool is_dirty)
 {
     //delete spt entry from spt & free the frame from phyisical memory
@@ -214,6 +220,8 @@ void page_delete(struct hash *spt, void *upage, bool is_dirty)
     case PAGE_SWAP: //in swap space
         load_page(spt, upage, false);
         is_dirty = true;
+        //If you delete the page_frame when performing page deletion, 'pin' the frame so that it does not remove the frame.
+        //especially to read the variable, we have to prevent the eviction
         frame_pin(p->kpage);
         if(p->file_to_read && (p->is_dirty || is_dirty)){ 
             //if mmap file has been modified, its data has to be updated to the file in the disk
@@ -226,6 +234,10 @@ void page_delete(struct hash *spt, void *upage, bool is_dirty)
     {   
         //if the page is allocated in the frame, and you want to delete a page
         //syscall_unmap() calls this
+
+        /*we have to pin the frame in same reason with previous one
+        If you delete the page_frame when performing page deletion, 'pin' the frame so that it does not remove the frame.
+        especially to read the variable, we have to prevent the eviction*/
         frame_pin(p->kpage);
         if(p->file_to_read && (p->is_dirty || is_dirty)){ 
             //if mmap file has been modified, its data has to be updated to the file in the disk
@@ -272,6 +284,7 @@ void page_evict(struct hash *spt, void *upage, bool is_dirty)
     p->kpage = NULL;
 }
 
+//called by process_exit()
 void page_spt_destroy(struct hash *spt)
 {
     struct lock *frame_table_lock = frame_get_frame_table_lock();
@@ -293,10 +306,9 @@ static void page_destructor(struct hash_elem *e, void *aux UNUSED)
     }
     else if (paging_to_destruct->status == PAGE_FRAME)
     {
+        //have to pin frame to prevent the eviction(same to previous reason)
         frame_pin(paging_to_destruct->kpage);
     }        
 
     free(paging_to_destruct);
 }
-
-

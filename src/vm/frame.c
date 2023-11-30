@@ -94,7 +94,7 @@ void *frame_allocate(enum palloc_flags flags, void *upage)
     f->kpage = kpage;
     f->upage = upage; 
     f->tid = thread_tid();
-    f->is_pinned = true;
+    f->is_pinned = true; //pin the page when it is first allocated in the physical memory
 
     hash_insert(&frame_table, &f->ftelem); //insert in frame_table that use hash function
     list_push_back(&frame_clock, &f->frame_clock_elem); //insert in frame_clock that is a list 
@@ -141,7 +141,7 @@ static struct frame *frame_lookup(void *kpage)
     f.kpage = kpage;
     e = hash_find(&frame_table, &f.ftelem);
 
-    if(e==NULL)
+    if(e == NULL)
     {
         return NULL;
     }
@@ -185,7 +185,7 @@ static struct frame *find_victim(void)
         if (!thread)
             PANIC("Invalid tid");
 
-        if (!frame->is_pinned){
+        if (!frame->is_pinned){ //if the frame is pinned, the page should not be evicted from the memory. 
             /* is_accessed is set to 1 by the HW if the page has been accessed.
                 if page has been recently accessed, you give a second chance, by setting the bit to 0
                 however, if the accessed bit is 0, you select the frame as a victim */
@@ -220,14 +220,14 @@ void frame_remove_all(tid_t tid)
         struct frame *f = list_entry(e, struct frame, frame_clock_elem);
         if (f->tid == tid){
             hash_delete(&frame_table, &f->ftelem); //remove from frame table
-            
             struct list_elem *next_e = list_next(e);
             e = list_remove(e); //remove from frame_clock list
             free(f);
             e=next_e;
         }
-        else
+        else{
             e = list_next(e);
+        }
     }
     lock_release(&frame_table_lock);
 }
@@ -239,6 +239,7 @@ struct lock *frame_get_frame_table_lock(void)
 
 void frame_pin(void *kpage)
 {
+    /* set the frame status 'pinned', prevent the frame from being evicted! */
     struct frame *f;
     bool is_held = lock_held_by_current_thread(&frame_table_lock);
 
@@ -257,6 +258,7 @@ void frame_pin(void *kpage)
 
 void frame_unpin(void *kpage)
 {
+    /* set the frame status 'unpined', allowing the frame to be evicted! */
     struct frame *f;
 
     lock_acquire(&frame_table_lock);

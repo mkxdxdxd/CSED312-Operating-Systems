@@ -798,6 +798,7 @@ remove_with_lock (struct lock *lock)
     struct thread *t = list_entry (eleme, struct thread, doelem);
     if (t->wait_on_lock == lock)
       list_remove (&t->doelem);
+    
   }
   
 }
