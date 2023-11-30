@@ -75,10 +75,10 @@ void *frame_allocate(enum palloc_flags flags, void *upage)
     
     struct frame *f;
     void *kpage; //kernel page to be associated with upage
-
+    bool is_held = lock_held_by_current_thread(&frame_table_lock);
     ASSERT(flags & PAL_USER);
     ASSERT(is_user_vaddr(upage));
-
+    if (!is_held)
     lock_acquire(&frame_table_lock);
 
     kpage = palloc_get_page(flags); //allocation in the memory
@@ -100,7 +100,7 @@ void *frame_allocate(enum palloc_flags flags, void *upage)
     list_push_back(&frame_clock, &f->frame_clock_elem); //insert in frame_clock that is a list 
 
     //printf("***** frame_allocate() : frame for upage 0x%08x is allocated at kpage 0x%08x *****\n", upage, kpage);
-    
+    if (!is_held)
     lock_release(&frame_table_lock);
 
     return kpage;
@@ -151,6 +151,9 @@ static struct frame *frame_lookup(void *kpage)
 
 static void frame_evict(void)
 {
+    bool is_held = lock_held_by_current_thread(&frame_table_lock);
+    if (!is_held) 
+        lock_acquire(&frame_table_lock);
     // 1. find victim page that will be evicted
     struct frame *victim_frame = find_victim();
     // 2. get the tid of the victim page as the page entry will be removed from the page table
@@ -161,6 +164,8 @@ static void frame_evict(void)
     page_evict(&victim_thread->spt, victim_frame->upage, is_dirty);
     //5. free the frame from the frame table. 
     frame_free(victim_frame->kpage);
+    if (!is_held)
+        lock_release(&frame_table_lock);
 }
 
 static struct frame *find_victim(void)
@@ -215,8 +220,11 @@ void frame_remove_all(tid_t tid)
         struct frame *f = list_entry(e, struct frame, frame_clock_elem);
         if (f->tid == tid){
             hash_delete(&frame_table, &f->ftelem); //remove from frame table
+            
+            struct list_elem *next_e = list_next(e);
             e = list_remove(e); //remove from frame_clock list
             free(f);
+            e=next_e;
         }
         else
             e = list_next(e);

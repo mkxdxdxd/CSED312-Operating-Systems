@@ -35,7 +35,7 @@ static bool is_sorted (struct list_elem *a, struct list_elem *b,
                        list_less_func *less, void *aux) UNUSED;
 
 /* Returns true if ELEM is a head, false otherwise. */
-static inline bool
+bool
 is_head (struct list_elem *elem)
 {
   return elem != NULL && elem->prev == NULL && elem->next != NULL;
@@ -43,7 +43,7 @@ is_head (struct list_elem *elem)
 
 /* Returns true if ELEM is an interior element,
    false otherwise. */
-static inline bool
+bool
 is_interior (struct list_elem *elem)
 {
   return elem != NULL && elem->prev != NULL && elem->next != NULL;
@@ -81,12 +81,12 @@ list_begin (struct list *list)
 struct list_elem *
 list_next (struct list_elem *elem)
 {
-  if (!is_interior(elem)){
-    if (!is_head(elem)){ //case of tail
-    ASSERT(is_tail(elem));// when pass, is a tail
-    ASSERT(is_interior(elem->prev));//when pass, the list is empty
-    }
-  }
+  // if (!is_interior(elem)){
+  //   if (!is_head(elem)){ //case of tail
+  //   ASSERT(is_tail(elem));// when pass, is a tail
+  //   ASSERT(is_interior(elem->prev));//when pass, the list is empty
+  //   }
+  // }
   ASSERT (is_head (elem) || is_interior (elem));
   return elem->next;
 }

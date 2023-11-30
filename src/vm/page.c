@@ -211,7 +211,7 @@ void page_delete(struct hash *spt, void *upage, bool is_dirty)
         break;
     case PAGE_ZERO:
         break;
-    case PAGE_SWAP:
+    case PAGE_SWAP: //in swap space
         load_page(spt, upage, false);
         is_dirty = true;
         frame_pin(p->kpage);
@@ -289,6 +289,7 @@ static void page_destructor(struct hash_elem *e, void *aux UNUSED)
     if (paging_to_destruct->status == PAGE_SWAP)
     {
         swap_free(paging_to_destruct->index_num_for_swap);
+        
     }
     else if (paging_to_destruct->status == PAGE_FRAME)
     {

@@ -278,11 +278,14 @@ lock_release (struct lock *lock)
   //remove lock from the lock_list
   struct list *locks = &thread_current()->locks;
   for (e = list_begin(locks); e != list_end(locks); e = list_next(e)){
+      ASSERT (is_head (e) || is_interior (e));
     if (list_entry(e, struct lock, list_elem) == lock)
     {
+      ASSERT (is_head (e) || is_interior (e));
         list_remove(e);
         break;
     }
+    ASSERT (is_head (e) || is_interior (e));
   }
 
   lock->holder = NULL;

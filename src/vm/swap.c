@@ -4,7 +4,6 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 
-
 static struct block *swap_block; // we use when swapping
 static struct bitmap *swap_table; 
 static size_t swap_table_size; //store the swap_table's size

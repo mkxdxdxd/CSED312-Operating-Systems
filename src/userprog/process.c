@@ -278,11 +278,6 @@ process_exit (void)
         }
     }
 
-     /* Running file (Process file) is stored in struct thread. Close the file that a process has opened */
-  lock_acquire(filesys_lock);
-  file_close(thread_current()->running_file);
-  lock_release(filesys_lock); // Now running thread has been closed, you can write on the file. 
-
   for (e = list_begin(locks); e != list_end(locks); e = list_next(e)){
         lock_release(list_entry(e, struct lock, list_elem));
   }
@@ -292,6 +287,11 @@ process_exit (void)
         syscall_munmap(j);
 
     page_spt_destroy(thread_get_spt());
+
+    /* Running file (Process file) is stored in struct thread. Close the file that a process has opened */
+    lock_acquire(filesys_lock);
+    file_close(thread_current()->running_file);
+    lock_release(filesys_lock); // Now running thread has been closed, you can write on the file. 
   #endif
 
   /* child has been removed from the list, successfully exited.
@@ -319,7 +319,9 @@ process_exit (void)
 #endif
       pagedir_destroy (pd);
     }
-
+  // for (e = list_begin(locks); e != list_end(locks); e = list_next(e)){
+  //       lock_release(list_entry(e, struct lock, list_elem));
+  // }
 
 }
 
