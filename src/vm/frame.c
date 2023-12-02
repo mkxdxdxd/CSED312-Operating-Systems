@@ -76,8 +76,10 @@ void *frame_allocate(enum palloc_flags flags, void *upage)
     struct frame *f;
     void *kpage; //kernel page to be associated with upage
     bool is_held = lock_held_by_current_thread(&frame_table_lock);
+
     ASSERT(flags & PAL_USER);
     ASSERT(is_user_vaddr(upage));
+
     if (!is_held)
     lock_acquire(&frame_table_lock);
 
@@ -109,6 +111,7 @@ void *frame_allocate(enum palloc_flags flags, void *upage)
 
 void frame_free(void *kpage)
 {
+    //free the frame from physical memory and free the frame table entry from frame table
     struct frame *f; //to find the frame
     bool is_held = lock_held_by_current_thread(&frame_table_lock);
     ASSERT(is_kernel_vaddr(kpage));
@@ -134,7 +137,7 @@ void frame_free(void *kpage)
 
 static struct frame *frame_lookup(void *kpage)
 {
-    //find the frame that use kpage
+    //find the frame that use kpage from frame table
     struct frame f; //to use the hash function
     struct hash_elem *e;
 
@@ -154,6 +157,7 @@ static void frame_evict(void)
     bool is_held = lock_held_by_current_thread(&frame_table_lock);
     if (!is_held) 
         lock_acquire(&frame_table_lock);
+
     // 1. find victim page that will be evicted
     struct frame *victim_frame = find_victim();
     // 2. get the tid of the victim page as the page entry will be removed from the page table
@@ -162,7 +166,8 @@ static void frame_evict(void)
     bool is_dirty = pagedir_is_dirty(victim_thread->pagedir, victim_frame->upage);
     //4. evict the page(execution varies depend on 'is_dirty')
     page_evict(&victim_thread->spt, victim_frame->upage, is_dirty);
-    //5. free the frame from the frame table. 
+    //5. free the frame from the frame table.
+
     frame_free(victim_frame->kpage);
     if (!is_held)
         lock_release(&frame_table_lock);
@@ -186,6 +191,7 @@ static struct frame *find_victim(void)
             PANIC("Invalid tid");
 
         if (!frame->is_pinned){ //if the frame is pinned, the page should not be evicted from the memory. 
+
             /* is_accessed is set to 1 by the HW if the page has been accessed.
                 if page has been recently accessed, you give a second chance, by setting the bit to 0
                 however, if the accessed bit is 0, you select the frame as a victim */
@@ -206,7 +212,7 @@ static struct list_elem *next_frame_clock()
     else return list_next(frame_clock_hand); //next pointer
 }
 
-
+/* Given tid, remove all frames from frame table, the actual page will be freed in pagedir_destroy() in process_exit()*/
 void frame_remove_all(tid_t tid)
 {
     /* when tid is given, free all the frames with tid.*/
@@ -223,7 +229,7 @@ void frame_remove_all(tid_t tid)
             struct list_elem *next_e = list_next(e);
             e = list_remove(e); //remove from frame_clock list
             free(f);
-            e=next_e;
+            e = next_e;
         }
         else{
             e = list_next(e);

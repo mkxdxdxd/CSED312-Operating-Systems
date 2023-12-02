@@ -23,7 +23,7 @@ void swap_init(void)
 
 }
 
-// Assign pages from swap disk to new frame
+// Bring the page from swap space to memory. Note that swap disk is NOT the same as disk file space
 void swap_in(size_t index_swap, void *kpage)
 {
     size_t i;
@@ -37,7 +37,7 @@ void swap_in(size_t index_swap, void *kpage)
     /*Copy swap block corresponding to swap_idx to frame connected to kpage*/
     for (i = 0; i < 8; i++)
     {
-        block_read(swap_block, index_swap * 8 + i, kpage + i * BLOCK_SECTOR_SIZE); //block read in swap_block with index_swap number
+        block_read(swap_block, index_swap * 8 + i, kpage + i * BLOCK_SECTOR_SIZE); //copy data from swap_block in swap disk to memory buffer
     }
            
     ASSERT(bitmap_test(swap_table, index_swap));
@@ -46,6 +46,7 @@ void swap_in(size_t index_swap, void *kpage)
     lock_release(&swap_table_lock);
 }
 
+// Copy from memory buffer to swap_block in swap disk. Note that swap disk is NOT the same as disk file space
 size_t swap_out(void *kpage)
 {
     size_t index_num_swap;
@@ -59,7 +60,7 @@ size_t swap_out(void *kpage)
     size_t i;
     for (i = 0; i < 8; i++)
     {
-        block_write(swap_block, index_num_swap * 8 + i, kpage + i * BLOCK_SECTOR_SIZE); //same situation with swap_in, but write at block
+        block_write(swap_block, index_num_swap * 8 + i, kpage + i * BLOCK_SECTOR_SIZE); //copy data from memory buffer to swap_block in swap disk
     }
                
     lock_release(&swap_table_lock);

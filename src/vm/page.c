@@ -20,6 +20,8 @@ void page_spt_init(struct hash *spt)
     hash_init(spt, page_hash, page_less, NULL); 
 }
 
+/* called by load_segment(), this fuction is to set up the user virtual memory for code, data and bss, but not for stack segment
+    thus, kernel virtual address is NOT allocated here! */
 void page_install_file(struct hash *spt, void *upage, struct file *file, off_t offset, uint32_t read_bytes, uint32_t zero_bytes, bool writable)
 {
     /* you install a page in spt allocate spt entry, initialise and insert into the hash table*/
@@ -53,6 +55,8 @@ void page_install_file(struct hash *spt, void *upage, struct file *file, off_t o
     //printf("***** page_install_file() : supplemental page table entry for upage 0x%08x is installed *****\n", upage);
 }
 
+/* called by setup_stack, this fuction is to set up the user stack
+    thus, kernel virtual address was already allocated in setup_stack! */
 void page_install_frame(struct hash *spt, void *upage, void *kpage)
 {
     /* you install a page in spt allocate spt entry for stack page, initialise and insert into the hash table*/
@@ -78,6 +82,7 @@ void page_install_frame(struct hash *spt, void *upage, void *kpage)
     //printf("***** page_install_frame() : supplemental page table entry for upage 0x%08x is installed *****\n", upage);
 }
 
+/* lookup spt entry using upage */
 struct page *page_lookup(struct hash *spt, void *upage)
 {
     struct page p;
@@ -136,7 +141,7 @@ void load_page(struct hash *spt, void *upage, bool unpin)
         syscall_exit(-1);
     }
 
-    if(p->status == PAGE_FILE)
+    if(p->status == PAGE_FILE) //code, data, bss but haven't brought into the memory due to lazy loading, now load a segment!
     {
         lock_with_filesys = syscall_get_filesys_lock();
         lock_acquire(lock_with_filesys);
@@ -151,10 +156,10 @@ void load_page(struct hash *spt, void *upage, bool unpin)
         memset(kpage + p->read_bytes, 0, p->zero_bytes);
         lock_release(lock_with_filesys);
     }
-    else if (p->status == PAGE_ZERO){
+    else if (p->status == PAGE_ZERO){//stack extension, set the memory to zero!
         memset(kpage, 0, PGSIZE);
     }
-    else if (p->status == PAGE_SWAP){
+    else if (p->status == PAGE_SWAP){//page is is swap space(swap disk), swap it into the memory!
         swap_in(p->index_num_for_swap, kpage);
         p->index_num_for_swap = -1;
     }
@@ -163,14 +168,14 @@ void load_page(struct hash *spt, void *upage, bool unpin)
 
 
     uint32_t * pagedir = thread_get_pagedir();
-    if(!pagedir_set_page(pagedir, upage, kpage, p->write_able))
+    if(!pagedir_set_page(pagedir, upage, kpage, p->write_able)) //set the page table as the frame entry has been allocated.
     {
         frame_free(kpage);
         syscall_exit(-1);
     }
 
-    p->kpage = kpage;
-    p->status = PAGE_FRAME;
+    p->kpage = kpage; //allocated frame
+    p->status = PAGE_FRAME; //page has been allocated in the physical memory
 
 
     //after page table setting, ready to evcition. unpin the all frame
@@ -217,8 +222,8 @@ void page_delete(struct hash *spt, void *upage, bool is_dirty)
         break;
     case PAGE_ZERO:
         break;
-    case PAGE_SWAP: //in swap space
-        load_page(spt, upage, false);
+    case PAGE_SWAP: //file mapped is in in swap space due to eviction mechanism, and you want to unmap!
+        load_page(spt, upage, false); // bring it into memory from swap space
         is_dirty = true;
         //If you delete the page_frame when performing page deletion, 'pin' the frame so that it does not remove the frame.
         //especially to read the variable, we have to prevent the eviction
@@ -230,11 +235,8 @@ void page_delete(struct hash *spt, void *upage, bool is_dirty)
         //free the physical frame
         frame_free(p->kpage);
         break;
-    case PAGE_FRAME:
+    case PAGE_FRAME: //file mapped is in memory and you want to unmap!
     {   
-        //if the page is allocated in the frame, and you want to delete a page
-        //syscall_unmap() calls this
-
         /*we have to pin the frame in same reason with previous one
         If you delete the page_frame when performing page deletion, 'pin' the frame so that it does not remove the frame.
         especially to read the variable, we have to prevent the eviction*/
@@ -271,8 +273,11 @@ void page_evict(struct hash *spt, void *upage, bool is_dirty)
     ASSERT(p->status == PAGE_FRAME); //if status is PAGE_FRAME assertion
     ASSERT(p->kpage != NULL); //if kpage have nothing, assertion
 
-    if (p->is_dirty || is_dirty) //if have been dirty, change the status and swap_out
+    if (p->is_dirty || is_dirty) 
     {
+        /* p->is_dirty means that that page has ever been evicted before, meaning that the evicted page should be kept in swap disk.
+            is_dirty means that the page has been written and the data has been changed. then the evicted apge should be kept in swap disk too.
+            so swap_out() occurs here.*/
         p->status = PAGE_SWAP;
         p->index_num_for_swap = swap_out(p->kpage);
         p->is_dirty = true; //change the memory
@@ -294,19 +299,22 @@ void page_spt_destroy(struct hash *spt)
     lock_release(frame_table_lock);
 }
 
-
+/*called by page_spt_destroy(). Destroy the entire supplemental page table.*/
 static void page_destructor(struct hash_elem *e, void *aux UNUSED)
 {
+    /* Since the only case where write-back is required is writing back the mmap file, and it has occured before the call.
+        thus, write back does not occur here.*/
     struct page *paging_to_destruct = hash_entry(e, struct page, sptelem);
 
-    if (paging_to_destruct->status == PAGE_SWAP)
+    if (paging_to_destruct->status == PAGE_SWAP)//
     {
+        /* if page is in swap space, call swap free(). */
         swap_free(paging_to_destruct->index_num_for_swap);
         
     }
     else if (paging_to_destruct->status == PAGE_FRAME)
     {
-        //have to pin frame to prevent the eviction(same to previous reason)
+        /* if page is in memory, have to pin frame to prevent the eviction*/
         frame_pin(paging_to_destruct->kpage);
     }        
 
